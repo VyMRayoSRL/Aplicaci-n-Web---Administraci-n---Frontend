@@ -1,5 +1,5 @@
 import api from './api'
-import { ComparacionAsistencia, ResumenMensual, ContabilidadResumen, ContabilidadPlanilla, ResumenPorPuesto, ResumenPorServicio } from '../types'
+import { ComparacionAsistencia, ResumenMensual, ContabilidadResumen, ContabilidadPlanilla, ResumenPorPuesto, ResumenPorServicio, ResumenMensualTodos } from '../types'
 
 export interface ImportacionResponse {
   asistencias: ComparacionAsistencia[]
@@ -34,12 +34,12 @@ export const contabilidadService = {
     return data
   },
 
-  getResumenMensualTodos: async (mes: number, anio: number, filtros?: { id_servicio?: number; id_puesto?: number }) => {
+  getResumenMensualTodos: async (mes: number, anio: number, filtros?: { id_servicio?: number; id_puesto?: number }): Promise<ResumenMensualTodos[]> => {
     const params: any = { mes, anio }
     if (filtros?.id_servicio) params.id_servicio = filtros.id_servicio
     if (filtros?.id_puesto) params.id_puesto = filtros.id_puesto
-    const { data } = await api.get(`/contabilidad/resumen-mensual`, { params })
-    return data as Array<{ id_vigilador: number; legajo: string | number; apellido: string; nombre: string; horas_diurnas: number; horas_nocturnas: number; horas_totales: number; dias_trabajados: number }>
+    const { data } = await api.get<ResumenMensualTodos[]>(`/contabilidad/resumen-mensual`, { params })
+    return data
   },
 
   exportResumenMensualTodos: async (rows: Array<{ legajo: any; apellido: string; nombre: string; horas_diurnas: number; horas_nocturnas: number; horas_totales: number; dias_trabajados: number }>, mes: number, anio: number) => {

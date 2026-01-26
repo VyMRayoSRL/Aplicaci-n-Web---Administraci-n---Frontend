@@ -66,9 +66,6 @@ const PlanillaExcelScreen: React.FC = () => {
   const [conflictMap, setConflictMap] = useState<Record<string, boolean>>({});
   const [conflictDetails, setConflictDetails] = useState<Record<string, any[]>>({});
 
-  // Nota: ya no se utiliza directamente; mantenido por compatibilidad futura
-  // const diasIdSet = useMemo(() => new Set((dias as DiaPlanilla[]).map(d => d.id_dia_planilla)), [dias]);
-
   // Busy map desde backend (batch)
   const vigiladorIds = useMemo(() => (vigiladores as Vigilador[]).map(v => Number(v.id_vigilador)), [vigiladores]);
   const range = useMemo(() => {
@@ -122,10 +119,7 @@ const PlanillaExcelScreen: React.FC = () => {
       await exportPlanillaExcel({ dias: dias as any[], vigiladores: vigiladores as any[], grid: grid as any, titulo });
     } catch {
       console.error('No se pudo exportar a Excel');
-      // mantener UI consistente con toasts en el resto de la app
-      // nota: importamos on-demand para no romper
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const toast = require('react-hot-toast');
+      const { default: toast } = await import('react-hot-toast');
       toast.error('No se pudo exportar a Excel');
     }
   };
@@ -828,16 +822,20 @@ const PlanillaExcelScreen: React.FC = () => {
                   DiaVigiladorEstado.FERIADO,
                   DiaVigiladorEstado.ENFERMO,
                   DiaVigiladorEstado.NO_ASIGNADO,
-                ];
-                const allowedOptions = hasTurnos ? [DiaVigiladorEstado.TRABAJA] : allOptions;
-                const selectedValue = hasTurnos ? DiaVigiladorEstado.TRABAJA : current;
+                ] as const;
+                type EstadoDia= typeof allOptions[number];
+                const allowedOptions: EstadoDia[] = hasTurnos ? [DiaVigiladorEstado.TRABAJA] :[...allOptions];
+                const selectedValue: EstadoDia = (hasTurnos ? DiaVigiladorEstado.TRABAJA : (current as EstadoDia));
                 return (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <select
                         className="input-field"
                         value={allowedOptions.includes(selectedValue) ? selectedValue : allowedOptions[0]}
-                        onChange={(e) => updateDiaEstado.mutate({ id_dia_vigilador: dv.id_dia_vigilador, estado: e.target.value })}
+                        onChange={(e) => {
+                          const estado = e.target.value as EstadoDia;
+                          updateDiaEstado.mutate({ id_dia_vigilador: dv.id_dia_vigilador, estado });
+                        }}
                       >
                         {allowedOptions.map(o => (
                           <option key={o} value={o}>{o}</option>

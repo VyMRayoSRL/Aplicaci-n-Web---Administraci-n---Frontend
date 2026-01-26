@@ -329,6 +329,17 @@ export interface ResumenPorServicio {
   horas_totales: number;
 }
 
+export interface ResumenMensualTodos {
+  id_vigilador: number;
+  legajo: string | number;
+  apellido: string;
+  nombre: string;
+  horas_diurnas: number;
+  horas_nocturnas: number;
+  horas_totales: number;
+  dias_trabajados: number;
+}
+
 // Tipos para formularios y filtros
 export interface LoginForm {
   email: string;

@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import {useQuery } from '@tanstack/react-query'
 import contabilidadService from '../services/contabilidad'
 import { serviciosService } from '../services/servicios'
 import { puestosService } from '../services/puestos'
+import { ResumenMensualTodos } from '../types'
 
 const ContabilidadResumenMensualScreen: React.FC = () => {
   const hoy = new Date()
@@ -24,17 +25,17 @@ const ContabilidadResumenMensualScreen: React.FC = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data = [], isFetching } = useQuery({
+  const { data = [], isFetching } = useQuery<ResumenMensualTodos[]>({
     queryKey: ['conta-resumen-mensual', mes, anio, idServicio || null, idPuesto || null],
     queryFn: () => contabilidadService.getResumenMensualTodos(mes, anio, {
       id_servicio: idServicio ? Number(idServicio) : undefined,
       id_puesto: idPuesto ? Number(idPuesto) : undefined,
     }),
-    keepPreviousData: true,
+    placeholderData: (prev) => prev ?? [],
     staleTime: 60 * 1000,
   })
 
-  const totales = useMemo(() => data.reduce((acc: any, r: any) => ({
+  const totales = useMemo(() => data.reduce((acc, r) => ({
     horas_diurnas: acc.horas_diurnas + (r.horas_diurnas || 0),
     horas_nocturnas: acc.horas_nocturnas + (r.horas_nocturnas || 0),
     horas_totales: acc.horas_totales + (r.horas_totales || 0),
@@ -42,7 +43,7 @@ const ContabilidadResumenMensualScreen: React.FC = () => {
   }), { horas_diurnas: 0, horas_nocturnas: 0, horas_totales: 0, dias_trabajados: 0 }), [data])
 
   const exportar = async () => {
-    const rows = data.map((r: any) => ({
+    const rows = data.map((r) => ({
       legajo: r.legajo,
       apellido: r.apellido,
       nombre: r.nombre,
@@ -109,7 +110,7 @@ const ContabilidadResumenMensualScreen: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {data.map((r: any) => (
+              {data.map((r) => (
                 <tr key={r.id_vigilador} className="border-t hover:bg-gray-50">
                   <td className="px-3 py-2">{r.legajo}</td>
                   <td className="px-3 py-2">{r.apellido}</td>
