@@ -13,7 +13,7 @@ export const planillasService = {
   },
 
   async createPlanilla(data: PlanillaForm): Promise<Planilla> {
-    const response = await api.post('/planillas', data);
+    const response = await api.post('/planillas', data,{timeout: 120000});
     return response.data;
   },
 
