@@ -24,8 +24,8 @@ const ServiciosScreen: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
 
   const { data: servicios = [], isLoading, error } = useServicios()
-  const { data: usuarios = [] } = useUsuarios({ activo: true })
   const perms = usePermissions()
+  const { data: usuarios = [] } = useUsuarios({ activo: true }, perms.role === 'admin')
   const navigate = useNavigate()
   const createServicio = useCreateServicio()
   const updateServicio = useUpdateServicio()

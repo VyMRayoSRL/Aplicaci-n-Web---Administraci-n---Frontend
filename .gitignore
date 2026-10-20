@@ -6,3 +6,8 @@ build/
 .env.*
 .DS_Store
 .vite/
+
+# Datos reales y restos de Expo
+src/xample/
+*.xlsx
+.expo/

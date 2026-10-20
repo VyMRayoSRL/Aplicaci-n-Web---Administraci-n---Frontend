@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usuariosService, CreateUserPayload } from '../services/usuarios';
 import toast from 'react-hot-toast';
 
-export const useUsuarios = (filters?: { rol?: string; activo?: boolean }) => {
+// El listado de usuarios es solo para admin: pasar enabled=false para otros roles.
+export const useUsuarios = (filters?: { rol?: string; activo?: boolean }, enabled = true) => {
   return useQuery({
     queryKey: ['usuarios', filters || {}],
     queryFn: () => usuariosService.listar(filters),
     staleTime: 5 * 60 * 1000,
+    enabled,
   });
 };
 
