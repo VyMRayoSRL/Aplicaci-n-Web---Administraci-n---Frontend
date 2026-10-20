@@ -3,6 +3,7 @@ import { AlertTriangle } from 'lucide-react'
 import { AsistenciaEstado, ResumenMensual } from '../types'
 import { useImportarAsistencias } from '../hooks/useContabilidad'
 import toast from 'react-hot-toast'
+import { getErrorMessage } from '../services/api';
 
 type DiaVig = {
   fecha: string // YYYY-MM-DD
@@ -62,7 +63,7 @@ const estadoBadgeClass = (estado?: string) => {
   }
 }
 
-const VigiladorCalendar: React.FC<Props> = ({ dias, mes, anio, idVigilador: _idVigilador, legajo, toleranciaMin = 20 }) => {
+const VigiladorCalendar: React.FC<Props> = ({ dias, mes, anio, idVigilador: _idVigilador, legajo, toleranciaMin = 15 }) => {
   const byDate = useMemo(() => {
     const map = new Map<string, DiaVig>()
     for (const d of dias || []) map.set(d.fecha, d)
@@ -143,7 +144,7 @@ const VigiladorCalendar: React.FC<Props> = ({ dias, mes, anio, idVigilador: _idV
       setInfoByDate(s => ({ ...s, ...nextInfo }))
       toast[errCount + noRegCount > 0 ? 'error' : 'success'](`Validación mes: OK ${okCount}, Errores ${errCount}, Sin registro ${noRegCount}`)
     } catch (e: any) {
-      const msg = e?.response?.data?.error || e?.message || 'Error al validar asistencias del mes'
+      const msg = getErrorMessage(e, 'Error al validar asistencias del mes')
       toast.error(msg)
     } finally {
       setBulkLoading(false)

@@ -1,13 +1,14 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import contabilidadService from '../services/contabilidad'
 import toast from 'react-hot-toast'
+import { getErrorMessage } from '../services/api';
 
 export const useImportarAsistencias = () => {
   return useMutation({
     mutationFn: ({ file, toleranciaMin, anio, filtros }: { file: File; toleranciaMin?: number; anio?: number; filtros?: { id_planilla?: number; id_servicio?: number } }) =>
       contabilidadService.importarAsistencias(file, toleranciaMin, anio, filtros),
     onError: (err: any) => {
-      const msg = err?.response?.data?.error || err?.message || 'Error al importar asistencias'
+      const msg = getErrorMessage(err, 'Error al importar asistencias')
       toast.error(msg)
     },
   })

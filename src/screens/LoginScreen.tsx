@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { getErrorMessage } from '../services/api';
 
 const loginSchema = z.object({
   email: z.string().email('Email inválido'),
@@ -25,7 +26,7 @@ const LoginScreen: React.FC = () => {
       await login(data);
       navigate('/');
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Credenciales inválidas');
+      toast.error(getErrorMessage(err, 'Credenciales inválidas'));
     }
   };
 

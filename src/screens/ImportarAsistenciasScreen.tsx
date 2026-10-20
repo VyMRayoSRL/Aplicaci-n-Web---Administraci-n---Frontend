@@ -6,7 +6,7 @@ import { useServicios } from '../hooks/useServicios'
 
 const ImportarAsistenciasScreen: React.FC = () => {
   const [file, setFile] = useState<File | null>(null)
-  const [tolerancia, setTolerancia] = useState<number>(20)
+  const [tolerancia, setTolerancia] = useState<number>(15)
   const [asistencias, setAsistencias] = useState<ComparacionAsistencia[] | null>(null)
   const [resumen, setResumen] = useState<ResumenMensual[] | null>(null)
   const [resumenPuesto, setResumenPuesto] = useState<ResumenPorPuesto[] | null>(null)

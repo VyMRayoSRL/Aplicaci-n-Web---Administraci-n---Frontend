@@ -1,5 +1,4 @@
-import api, { API_BASE_URL } from './api';
-import axios from 'axios';
+import api, { refrescarToken } from './api';
 import { User, LoginForm } from '../types';
 
 export interface LoginResponse {
@@ -26,21 +25,14 @@ export const authService = {
   },
 
   async login({ email, password }: LoginForm): Promise<LoginResponse> {
-    const payload = { email, password };
-    const res = await api.post<LoginResponse>('/auth/login', payload);
+    const res = await api.post<LoginResponse>('/auth/login', { email, password });
     const { usuario, token } = res.data;
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(usuario));
     return { usuario, token };
   },
 
-  async refresh(): Promise<string> {
-    // Usar axios directo para evitar interceptores circulares
-    const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
-    const { token } = res.data as { token: string };
-    localStorage.setItem(TOKEN_KEY, token);
-    return token;
-  },
+  refresh: refrescarToken,
 
   async logout(): Promise<void> {
     try {
@@ -51,5 +43,3 @@ export const authService = {
     }
   },
 };
-
-

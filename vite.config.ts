@@ -13,5 +13,9 @@ export default defineConfig({
   server: {
     port: 3001,
     open: true,
+    // Mismo origen en desarrollo: /api va al back (así viaja la cookie de sesión, sin CORS).
+    proxy: {
+      '/api': { target: process.env.VITE_PROXY_TARGET || 'http://localhost:3000', changeOrigin: false },
+    },
   },
 })

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { diaVigiladorService } from '../services/diaVigilador';
 import toast from 'react-hot-toast';
+import { getErrorMessage } from '../services/api';
 
 export const useUpdateDiaVigiladorEstado = (idPlanilla?: number) => {
   const qc = useQueryClient();
@@ -16,7 +17,7 @@ export const useUpdateDiaVigiladorEstado = (idPlanilla?: number) => {
       toast.success('Estado del día actualizado');
     },
     onError: (e: any) => {
-      const msg = e?.response?.data?.message || e?.response?.data?.error || 'No se pudo actualizar el estado';
+      const msg = getErrorMessage(e, 'No se pudo actualizar el estado');
       toast.error(msg);
     },
   });

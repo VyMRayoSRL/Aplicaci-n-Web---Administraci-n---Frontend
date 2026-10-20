@@ -10,7 +10,7 @@ export interface ImportacionResponse {
 }
 
 export const contabilidadService = {
-  importarAsistencias: async (file: File, toleranciaMin: number = 20, anio?: number, filtros?: { id_planilla?: number; id_servicio?: number }): Promise<ImportacionResponse> => {
+  importarAsistencias: async (file: File, toleranciaMin: number = 15, anio?: number, filtros?: { id_planilla?: number; id_servicio?: number }): Promise<ImportacionResponse> => {
     const formData = new FormData()
     formData.append('file', file)
     const params = new URLSearchParams()

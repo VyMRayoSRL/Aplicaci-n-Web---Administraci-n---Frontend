@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { planillasService } from '../services/planillas';
 import { turnosService } from '../services/turnos';
 import toast from 'react-hot-toast';
+import { getErrorMessage } from '../services/api';
 // import { diaVigiladorService } from '../services/diaVigilador';
 
 export const usePlanillaDias = (idPlanilla: number) => {
@@ -31,7 +32,7 @@ export const useAddVigiladorToPlanilla = (idPlanilla: number) => {
       qc.invalidateQueries({ queryKey: ['planilla', idPlanilla, 'dias'] });
       toast.success('Vigilador agregado');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'No se pudo agregar el vigilador'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'No se pudo agregar el vigilador')),
   });
 };
 
@@ -74,7 +75,7 @@ export const useCreateTurno = () => {
       toast.success('Turno creado');
     },
     onError: (e: any) => {
-      const msg = e?.response?.data?.message || e?.response?.data?.error || 'No se pudo crear el turno';
+      const msg = getErrorMessage(e, 'No se pudo crear el turno');
       toast.error(msg);
     },
   });
@@ -93,7 +94,7 @@ export const useDeleteTurno = (idPlanilla?: number) => {
       toast.success('Turno eliminado');
     },
     onError: (e: any) => {
-      const msg = e?.response?.data?.message || e?.response?.data?.error || 'No se pudo eliminar el turno';
+      const msg = getErrorMessage(e, 'No se pudo eliminar el turno');
       toast.error(msg);
     },
   });
@@ -113,7 +114,7 @@ export const useUpdateTurno = (idPlanilla?: number) => {
       toast.success('Turno actualizado');
     },
     onError: (e: any) => {
-      const msg = e?.response?.data?.message || e?.response?.data?.error || 'No se pudo actualizar el turno';
+      const msg = getErrorMessage(e, 'No se pudo actualizar el turno');
       toast.error(msg);
     },
   });

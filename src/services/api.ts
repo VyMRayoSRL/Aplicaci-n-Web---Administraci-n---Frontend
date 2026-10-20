@@ -1,100 +1,92 @@
-import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
-import { authService } from './auth';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 
-// Configuración base de la API
-export const API_BASE_URL = import.meta.env.VITE_API_URL;
+// Por defecto la API está en el mismo origen (/api): en desarrollo la sirve el proxy de Vite
+// y en producción nginx. VITE_API_URL solo hace falta si el back vive en otro dominio.
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-// Crear instancia de axios
+const TOKEN_KEY = 'authToken';
+const USER_KEY = 'authUser';
+
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  withCredentials: false,
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json' },
+  // La cookie httpOnly del refresh token tiene que viajar
+  withCredentials: true,
 });
 
-// Interceptor para agregar token de autenticación desde localStorage
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Interceptor para manejar respuestas y errores
-api.interceptors.response.use(
-  (response: AxiosResponse) => response,
-  (() => {
-    // Single-flight refresh lock to avoid concurrent refresh calls
-    let refreshPromise: Promise<string> | null = null;
-    let isLoggingOut = false;
-
-    const forceLogout = () => {
-      if (isLoggingOut) return;
-      isLoggingOut = true;
-      try {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('authUser');
-      } catch {}
-      // Redirect to login; avoid using navigate here to prevent circular deps
-      try { window.location.replace('/login'); } catch { /* no-op */ }
-    };
-
-    return async (error: AxiosError) => {
-      const originalRequest: any = error.config || {};
-
-      // Only handle unauthorized responses once per request
-      if (error.response?.status === 401 && !originalRequest._retry) {
-        originalRequest._retry = true;
-
-        try {
-          // Reuse ongoing refresh if present
-          if (!refreshPromise) {
-            refreshPromise = authService.refresh().finally(() => {
-              // Reset lock after refresh settles
-              refreshPromise = null;
-            });
-          }
-          const newToken = await refreshPromise;
-          // Retry original request with updated token
-          originalRequest.headers = originalRequest.headers || {};
-          originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-          return api(originalRequest);
-        } catch (refreshErr) {
-          // On refresh failure, force logout and propagate error
-          forceLogout();
-          return Promise.reject(refreshErr);
-        }
-      }
-
-      return Promise.reject(error);
-    };
-  })()
-);
-
-// Función helper para manejar errores de la API
-export const handleApiError = (error: any): string => {
-  if (axios.isAxiosError(error)) {
-    if (error.response?.data?.message) {
-      return error.response.data.message;
-    }
-    if (error.response?.data?.error) {
-      return error.response.data.error;
-    }
-    if (error.message) {
-      return error.message;
-    }
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
   }
-  return 'Error desconocido';
+  return config;
+});
+
+// Un solo refresh a la vez aunque fallen varios pedidos juntos.
+let refreshPromise: Promise<string> | null = null;
+export const refrescarToken = (): Promise<string> => {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+      .then((res) => {
+        const { token, usuario } = res.data as { token: string; usuario?: unknown };
+        localStorage.setItem(TOKEN_KEY, token);
+        if (usuario) localStorage.setItem(USER_KEY, JSON.stringify(usuario));
+        return token;
+      })
+      .finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
 };
 
-// Función helper para construir query parameters
+let cerrandoSesion = false;
+const forzarLogout = () => {
+  if (cerrandoSesion) return;
+  cerrandoSesion = true;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  window.location.replace('/login');
+};
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const original: any = error.config || {};
+    const esAuth = String(original.url || '').startsWith('/auth/');
+    // Un 401 de login (credenciales malas) no dispara refresh ni recarga la página.
+    if (error.response?.status === 401 && !original._retry && !esAuth) {
+      original._retry = true;
+      try {
+        const token = await refrescarToken();
+        original.headers = original.headers || {};
+        original.headers.Authorization = `Bearer ${token}`;
+        return api(original);
+      } catch (refreshErr) {
+        forzarLogout();
+        return Promise.reject(refreshErr);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Mensaje para mostrarle al usuario a partir de un error de la API.
+// El back responde { error: { code, message, details }, requestId }.
+export const getErrorMessage = (error: any, fallback = 'Ocurrió un error inesperado'): string => {
+  const data = error?.response?.data;
+  if (data?.error?.message) return data.error.message;
+  if (typeof data?.error === 'string') return data.error;
+  if (typeof data?.message === 'string') return data.message;
+  if (error?.code === 'ECONNABORTED') return 'El servidor tardó demasiado en responder';
+  if (error?.message === 'Network Error') return 'No se pudo conectar con el servidor';
+  return fallback;
+};
+
+// Compatibilidad con el nombre anterior
+export const handleApiError = (error: any): string => getErrorMessage(error, 'Error desconocido');
+
 export const buildQueryParams = (params: Record<string, any>): string => {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {

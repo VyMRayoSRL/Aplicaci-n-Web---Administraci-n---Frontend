@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDptByPuesto, useCreateDpt, useUpdateDpt, useDeleteDpt } from '../hooks/useDiaPuestoTipo';
 import toast from 'react-hot-toast';
+import api from '../services/api';
 import Modal from '../components/Modal';
 import { usePuestos } from '../hooks/usePuestos';
 
@@ -110,8 +111,7 @@ const ConfigurarDPTScreen: React.FC = () => {
     try {
       // Traer DPT de origen via servicio existente
       // Reutilizamos el hook de pantalla actual para leer los del origen de manera directa (llamada manual)
-      const resp = await fetch(`${import.meta.env.VITE_API_URL}/dia-puesto-tipo/puesto/${copyFromPuesto}`, { credentials: 'include', headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}` } });
-      const source = await resp.json();
+      const { data: source } = await api.get(`/dia-puesto-tipo/puesto/${copyFromPuesto}`);
       if (!Array.isArray(source)) { toast.error('No se pudo obtener DPT del puesto origen'); return; }
       // Mapa destino actual para decidir overwrite
       const current = Array.isArray(dpt) ? dpt : [];

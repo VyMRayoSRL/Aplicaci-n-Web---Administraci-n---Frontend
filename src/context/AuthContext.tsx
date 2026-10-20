@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { User, LoginForm } from '../types';
 import { authService } from '../services/auth';
+import { queryClient } from '../queryClient';
 
 interface AuthContextValue {
   user: User | null;
@@ -25,14 +26,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (data: LoginForm) => {
     const res = await authService.login(data);
+    // Que no quede nada cacheado de una sesión anterior
+    queryClient.clear();
     setUser(res.usuario);
     setToken(res.token);
   };
 
   const logout = async () => {
-    await authService.logout();
-    setUser(null);
-    setToken(null);
+    try {
+      await authService.logout();
+    } finally {
+      // Lo que vio este usuario no tiene que verlo el próximo que entre en la misma PC
+      queryClient.clear();
+      setUser(null);
+      setToken(null);
+    }
   };
 
   const value = useMemo<AuthContextValue>(() => ({

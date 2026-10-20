@@ -10,6 +10,7 @@ import { puestosService } from '../services/puestos'
 import { planillasService } from '../services/planillas'
 import { turnosService } from '../services/turnos'
 import Modal from '../components/Modal'
+import { getErrorMessage } from '../services/api';
 
 const monthOptions = Array.from({ length: 12 }).map((_, i) => ({ value: i + 1, label: new Date(2000, i, 1).toLocaleString('es-AR', { month: 'long' }) }))
 
@@ -54,7 +55,7 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
   const updateEstado = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) => diaVigiladorService.updateDia(id, { estado }),
     onSuccess: () => { toast.success('Estado actualizado'); refetchDias() },
-    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Error al actualizar el estado'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Error al actualizar el estado')),
   })
 
   const [estadoModal, setEstadoModal] = useState<{ open: boolean; fecha?: string; idDia?: number; estado?: string }>({ open: false })
@@ -124,7 +125,7 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
         }))
       }))
     } catch (e: any) {
-      toast.error(e?.response?.data?.error || e?.message || 'Error al cargar turnos')
+      toast.error(getErrorMessage(e, 'Error al cargar turnos'))
     } finally {
       setLoadingTurnos(false)
     }
@@ -147,7 +148,7 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
       setPlanillaSel('')
       setDiaPlanillaSel('')
     } catch (e: any) {
-      toast.error(e?.response?.data?.error || e?.message || 'No se pudo abrir gestión de turnos')
+      toast.error(getErrorMessage(e, 'No se pudo abrir gestión de turnos'))
     }
   }
 
@@ -157,7 +158,7 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
       toast.success('Turno creado')
       if (turnosModal.idDia && turnosModal.fecha) await loadTurnos(turnosModal.idDia, turnosModal.fecha)
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Error al crear turno'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Error al crear turno')),
   })
 
   const updateTurno = useMutation({
@@ -166,7 +167,7 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
       toast.success('Turno actualizado')
       if (turnosModal.idDia && turnosModal.fecha) await loadTurnos(turnosModal.idDia, turnosModal.fecha)
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Error al actualizar turno'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Error al actualizar turno')),
   })
 
   const deleteTurno = useMutation({
@@ -175,7 +176,7 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
       toast.success('Turno eliminado')
       if (turnosModal.idDia && turnosModal.fecha) await loadTurnos(turnosModal.idDia, turnosModal.fecha)
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Error al eliminar turno'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Error al eliminar turno')),
   })
 
   // Auto-preselección "obvia" y no intrusiva
@@ -299,7 +300,7 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
                   }
                   setEstadoModal({ open: false })
                 } catch (e: any) {
-                  toast.error(e?.response?.data?.error || e?.message || 'Error al guardar')
+                  toast.error(getErrorMessage(e, 'Error al guardar'))
                 }
               }}
             >Guardar</button>
