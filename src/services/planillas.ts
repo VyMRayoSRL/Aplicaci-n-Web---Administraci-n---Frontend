@@ -1,5 +1,5 @@
 import api from './api';
-import { Planilla, PlanillaForm } from '../types';
+import { Planilla, PlanillaEstado, PlanillaForm } from '../types';
 
 export const planillasService = {
   async getById(id: number): Promise<Planilla> {
@@ -22,8 +22,8 @@ export const planillasService = {
     return response.data;
   },
 
-  async duplicatePlanilla(data: { id_puesto: number; mes_origen: number; anio_origen: number; mes_destino: number; anio_destino: number }): Promise<any> {
-    const response = await api.post('/planillas/duplicar', data);
+  async cambiarEstado(id: number, estado: PlanillaEstado): Promise<Planilla> {
+    const response = await api.patch(`/planillas/${id}/estado`, { estado });
     return response.data;
   },
 
@@ -39,12 +39,14 @@ export const planillasService = {
   },
 
   async addVigilador(idPlanilla: number, idVigilador: number) {
-    const response = await api.post(`/planillas/${idPlanilla}/vigiladores`, { id_vigilador: idVigilador }).catch(err => {
-      console.log(err.response?.data);
-      console.log(err.response?.status);
-    });
-    if (!response) throw new Error('No se pudo agregar el vigilador');
+    const response = await api.post(`/planillas/${idPlanilla}/vigiladores`, { id_vigilador: idVigilador });
     return response.data;
+  },
+
+  // Cuántos turnos se borran si se quita al vigilador (para pedir confirmación)
+  async contarTurnosVigilador(idPlanilla: number, idVigilador: number): Promise<number> {
+    const response = await api.get(`/planillas/${idPlanilla}/vigiladores/${idVigilador}/turnos/cantidad`);
+    return response.data.cantidad;
   },
 
   async removeVigilador(idPlanilla: number, idVigilador: number) {

@@ -65,10 +65,12 @@ export interface Planilla {
   mes: number;
   anio: number;
   horas_mensuales: number;
+  estado: PlanillaEstado;
   id_usuario: number;
-  created_at: string;
-  updated_at?: string;
 }
+
+// Borrador → vigente → cerrada (una cerrada se reabre a vigente)
+export type PlanillaEstado = 'borrador' | 'vigente' | 'cerrada';
 
 export interface PlanillaForm {
   id_puesto: number;
@@ -124,50 +126,43 @@ export interface DiaPuestoTipoForm {
   es_laborable: boolean;
 }
 
+// Turno como intervalo [inicio, fin) con fecha y hora local 'YYYY-MM-DDTHH:mm'.
+// fecha, hora_inicio, hora_fin, cantidad_horas e id_dia_planilla son derivados (vienen calculados del back).
 export interface Turno {
   id_turno: number;
-  id_dia_planilla: number;
-  id_dia_vigilador: number;
+  id_planilla: number;
+  id_vigilador: number;
+  inicio: string;
+  fin: string;
+  fecha: string;
   hora_inicio: string;
-  cantidad_horas: number;
-  horas_diurnas: string;
-  horas_nocturnas: string;
   hora_fin: string;
-  turno_compartido?: boolean;
+  cantidad_horas: number;
+  horas_diurnas: number;
+  horas_nocturnas: number;
+  id_dia_planilla: number | null;
+  id_puesto: number;
+  id_servicio: number;
+  puesto_nombre?: string;
+  servicio_nombre?: string;
+  advertencias?: AdvertenciaTurno[];
+}
+
+// No impiden guardar: más de 12 h seguidas o menos de 12 h de descanso
+export interface AdvertenciaTurno {
+  codigo: 'TURNO_LARGO' | 'DESCANSO_CORTO';
+  mensaje: string;
+}
+
+export interface TurnoForm {
+  id_planilla: number;
+  id_vigilador: number;
+  inicio: string;
+  fin: string;
 }
 
 export interface DiaVigiladorIndexMap {
   [idVigilador: number]: { [fecha: string]: any };
-}
-
-export interface TurnoForm {
-  id_dia_vigilador: number;
-  id_dia_planilla: number;
-  hora_inicio: string;
-  cantidad_horas: number;
-  turno_compartido?: boolean;
-}
-
-export interface TurnoBulkForm {
-  vigiladores: Array<{
-    id_vigilador: number;
-    dias_vigilador: Array<{
-      id_dia_vigilador: number;
-      fecha: string;
-      id_dia_planilla: number;
-    }>;
-  }>;
-  turnosOrganizadosPorDia: Array<{
-    id_dia_planilla: number;
-    vigiladores: Array<{
-      id_vigilador: number;
-      id_dia_vigilador: number;
-      turnos: Array<{
-        hora_inicio: string;
-        cantidad_horas: number;
-      }>;
-    }>;
-  }>;
 }
 
 export interface DiaVigilador {
@@ -175,17 +170,6 @@ export interface DiaVigilador {
   id_vigilador: number;
   fecha: string;
   estado: 'trabaja' | 'franco' | 'ausente' | 'vacaciones' | 'licencia' | 'feriado' | 'enfermo' | 'No Asignado';
-}
-
-export interface ContinuidadTurno {
-  id_continuidad_turno: number;
-  id_turno: number;
-  id_dia_planilla_destino: number;
-  id_dia_vigilador_destino: number;
-  id_vigilador: number;
-  fecha: string;
-  hora_inicio_heredada: string;
-  hora_fin_heredada: string;
 }
 
 // Estados compartidos

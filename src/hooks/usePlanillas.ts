@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { planillasService } from '../services/planillas';
-// import { PlanillaForm } from '../types';
+import type { PlanillaEstado } from '../types';
+import { getErrorMessage } from '../services/api';
 import toast from 'react-hot-toast';
 
 export const usePlanillasByPuesto = (idPuesto: number) => {
@@ -60,9 +61,9 @@ export const useDeletePlanilla = () => {
       queryClient.setQueryData<any[]>(['planillas'], (old = []) => old.filter((pl: any) => pl.id_planilla !== id));
       return { previous };
     },
-    onError: (_e, _v, ctx) => {
+    onError: (e: any, _v, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(['planillas'], ctx.previous);
-      toast.error('No se pudo eliminar la planilla');
+      toast.error(getErrorMessage(e, 'No se pudo eliminar la planilla'));
     },
     onSuccess: () => {
       toast.success('Planilla eliminada');
@@ -73,19 +74,16 @@ export const useDeletePlanilla = () => {
   });
 };
 
-export const useDuplicatePlanilla = () => {
+export const useCambiarEstadoPlanilla = (id: number) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { id_puesto: number; mes_origen: number; anio_origen: number; mes_destino: number; anio_destino: number }) => planillasService.duplicatePlanilla(data),
-    onSuccess: (_resp, variables) => {
+    mutationFn: (estado: PlanillaEstado) => planillasService.cambiarEstado(id, estado),
+    onSuccess: (planilla) => {
+      queryClient.setQueryData(['planilla', id], planilla);
       queryClient.invalidateQueries({ queryKey: ['planillas'] });
-      queryClient.invalidateQueries({ queryKey: ['planillas', 'puesto', variables.id_puesto] });
-      toast.success('Planilla duplicada');
+      const textos: Record<PlanillaEstado, string> = { borrador: 'Planilla en borrador', vigente: 'Planilla vigente', cerrada: 'Planilla cerrada' };
+      toast.success(textos[planilla.estado]);
     },
-    onError: () => {
-      toast.error('No se pudo duplicar la planilla');
-    },
+    onError: (e: any) => toast.error(getErrorMessage(e, 'No se pudo cambiar el estado')),
   });
 };
-
-

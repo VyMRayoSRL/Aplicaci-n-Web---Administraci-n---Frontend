@@ -3,7 +3,7 @@ import { planillasService } from '../services/planillas';
 import { turnosService } from '../services/turnos';
 import toast from 'react-hot-toast';
 import { getErrorMessage } from '../services/api';
-// import { diaVigiladorService } from '../services/diaVigilador';
+import type { Turno, TurnoForm } from '../types';
 
 export const usePlanillaDias = (idPlanilla: number) => {
   return useQuery({
@@ -43,81 +43,59 @@ export const useRemoveVigiladorFromPlanilla = (idPlanilla: number) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['planilla', idPlanilla, 'vigiladores'] });
       qc.invalidateQueries({ queryKey: ['planilla', idPlanilla, 'dias'] });
-      toast.success('Vigilador eliminado');
+      qc.invalidateQueries({ queryKey: ['turnos'] });
+      toast.success('Vigilador quitado de la planilla');
     },
-    onError: () => toast.error('No se pudo eliminar el vigilador'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'No se pudo quitar el vigilador')),
   });
 };
 
-export const useTurnosByDiaPlanilla = (idDiaPlanilla: number) => {
-  return useQuery({
-    queryKey: ['turnos', 'diaPlanilla', idDiaPlanilla],
-    queryFn: () => turnosService.getByDiaPlanilla(idDiaPlanilla),
-    enabled: !!idDiaPlanilla,
-    staleTime: 30 * 1000,
-  });
+// Después de cualquier cambio de turnos: la grilla, las horas del día y los turnos en otras planillas
+const invalidarTurnos = (qc: ReturnType<typeof useQueryClient>, idPlanilla?: number) => {
+  qc.invalidateQueries({ queryKey: ['turnos'] });
+  if (idPlanilla) qc.invalidateQueries({ queryKey: ['planilla', idPlanilla, 'dias'] });
+  qc.invalidateQueries({ queryKey: ['dias-vigilador'] });
+};
+
+// Las advertencias (más de 12 h, descanso corto) no impiden guardar: se avisan aparte
+const avisarAdvertencias = (turno?: Turno) => {
+  for (const a of turno?.advertencias || []) toast(a.mensaje, { icon: '⚠️', duration: 6000 });
 };
 
 export const useCreateTurno = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: turnosService.createTurno,
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ['turnos', 'diaPlanilla', (vars as any).id_dia_planilla] });
-      // Invalida también la grilla de planilla completa para reflejar el nuevo turno
-      if ((vars as any).id_planilla) {
-        qc.invalidateQueries({ queryKey: ['turnos', 'planilla', (vars as any).id_planilla] });
-      }
-      // También refrescamos los días de la planilla (horas trabajadas/cumplidas)
-      if ((vars as any).id_planilla) {
-        qc.invalidateQueries({ queryKey: ['planilla', (vars as any).id_planilla, 'dias'] });
-      }
+    mutationFn: (payload: TurnoForm) => turnosService.createTurno(payload),
+    onSuccess: (turno, vars) => {
+      invalidarTurnos(qc, vars.id_planilla);
       toast.success('Turno creado');
+      avisarAdvertencias(turno);
     },
-    onError: (e: any) => {
-      const msg = getErrorMessage(e, 'No se pudo crear el turno');
-      toast.error(msg);
-    },
+    onError: (e: any) => toast.error(getErrorMessage(e, 'No se pudo crear el turno')),
   });
 };
 
 export const useDeleteTurno = (idPlanilla?: number) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: turnosService.deleteTurno,
+    mutationFn: (id: number) => turnosService.deleteTurno(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['turnos'] });
-      if (idPlanilla) {
-        qc.invalidateQueries({ queryKey: ['turnos', 'planilla', idPlanilla] });
-        qc.invalidateQueries({ queryKey: ['planilla', idPlanilla, 'dias'] });
-      }
+      invalidarTurnos(qc, idPlanilla);
       toast.success('Turno eliminado');
     },
-    onError: (e: any) => {
-      const msg = getErrorMessage(e, 'No se pudo eliminar el turno');
-      toast.error(msg);
-    },
+    onError: (e: any) => toast.error(getErrorMessage(e, 'No se pudo eliminar el turno')),
   });
 };
 
 export const useUpdateTurno = (idPlanilla?: number) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ hora_inicio: string; cantidad_horas: number }> }) =>
-      turnosService.updateTurno(id, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['turnos'] });
-      if (idPlanilla) {
-        qc.invalidateQueries({ queryKey: ['turnos', 'planilla', idPlanilla] });
-        qc.invalidateQueries({ queryKey: ['planilla', idPlanilla, 'dias'] });
-      }
+    mutationFn: ({ id, data }: { id: number; data: Partial<Pick<TurnoForm, 'inicio' | 'fin'>> }) => turnosService.updateTurno(id, data),
+    onSuccess: (turno) => {
+      invalidarTurnos(qc, idPlanilla);
       toast.success('Turno actualizado');
+      avisarAdvertencias(turno);
     },
-    onError: (e: any) => {
-      const msg = getErrorMessage(e, 'No se pudo actualizar el turno');
-      toast.error(msg);
-    },
+    onError: (e: any) => toast.error(getErrorMessage(e, 'No se pudo actualizar el turno')),
   });
 };
-
-

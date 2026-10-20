@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { usePlanilla } from '../hooks/usePlanillas'
-import { usePlanillaDias, usePlanillaVigiladores, useTurnosByDiaPlanilla, useAddVigiladorToPlanilla, useRemoveVigiladorFromPlanilla, useCreateTurno } from '../hooks/usePlanillaDetalle'
+import { usePlanillaDias, usePlanillaVigiladores, useAddVigiladorToPlanilla, useRemoveVigiladorFromPlanilla, useCreateTurno } from '../hooks/usePlanillaDetalle'
+import { useQuery } from '@tanstack/react-query'
+import { turnosService } from '../services/turnos'
+import { intervaloDesde } from '../utils/turnoUtils'
+import { EstadoPlanillaControl } from '../components/PlanillaEstado'
 import { useVigiladores } from '../hooks/useVigiladores'
 import { usePermissions } from '../hooks/usePermissions'
 import toast from 'react-hot-toast'
-import { diaVigiladorService } from '../services/diaVigilador'
 
 const PlanillaDetalleScreen: React.FC = () => {
   const params = useParams()
@@ -16,7 +19,13 @@ const PlanillaDetalleScreen: React.FC = () => {
   const { data: todosVigiladores = [] } = useVigiladores()
   const perms = usePermissions()
   const [selectedDia, setSelectedDia] = useState<number | null>(null)
-  const { data: turnos = [] } = useTurnosByDiaPlanilla(selectedDia || 0)
+  const { data: turnosPlanilla = [] } = useQuery({
+    queryKey: ['turnos', 'planilla', planillaId],
+    queryFn: () => turnosService.getByPlanilla(planillaId),
+    enabled: !!planillaId,
+  })
+  const turnos = turnosPlanilla.filter(t => t.id_dia_planilla === selectedDia)
+  const canEdit = perms.canManagePlanillas && planilla?.estado !== 'cerrada'
   const addVig = useAddVigiladorToPlanilla(planillaId)
   const removeVig = useRemoveVigiladorFromPlanilla(planillaId)
   const [nuevoVigLegajo, setNuevoVigLegajo] = useState<string>("")
@@ -38,6 +47,7 @@ const PlanillaDetalleScreen: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Planilla #{planilla?.id_planilla}</h1>
           <p className="text-sm text-gray-700">Mes {planilla?.mes}/{planilla?.anio} - Horas requeridas: {planilla?.horas_mensuales}</p>
         </div>
+        <EstadoPlanillaControl planilla={planilla} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -76,7 +86,7 @@ const PlanillaDetalleScreen: React.FC = () => {
         <div className="card p-4 space-y-4">
           <div>
             <h3 className="font-semibold">Vigiladores ({vigiladores.length})</h3>
-            {perms.canManagePlanillas && (
+            {canEdit && (
             <div className="flex items-center gap-2 mb-2">
               <input
                 type="number"
@@ -103,7 +113,7 @@ const PlanillaDetalleScreen: React.FC = () => {
               {vigiladores.map((v: any) => (
                 <li key={v.id_vigilador} className="flex items-center justify-between">
                   <span>Legajo {v.legajo} - {v.apellido}, {v.nombre}</span>
-                  {perms.canManagePlanillas && (
+                  {canEdit && (
                     <button
                       className="text-red-600"
                       disabled={removeVig.isPending}
@@ -123,7 +133,7 @@ const PlanillaDetalleScreen: React.FC = () => {
             ) : (
               <>
                 <div className="space-y-2">
-                  {perms.canManagePlanillas && (
+                  {canEdit && (
                     <>
                       <div className="grid grid-cols-3 gap-2">
                         <select className="input-field" value={turnoForm.id_vigilador} onChange={(e) => setTurnoForm({ ...turnoForm, id_vigilador: e.target.value })}>
@@ -132,20 +142,21 @@ const PlanillaDetalleScreen: React.FC = () => {
                             <option key={v.id_vigilador} value={v.id_vigilador}>Legajo {v.legajo} - {v.apellido}, {v.nombre}</option>
                           ))}
                         </select>
-                        <input className="input-field" placeholder="Hora inicio (HH:mm)" value={turnoForm.hora_inicio} onChange={(e) => setTurnoForm({ ...turnoForm, hora_inicio: e.target.value })} />
+                        <input type="time" step={1800} className="input-field" aria-label="Hora de inicio" value={turnoForm.hora_inicio} onChange={(e) => setTurnoForm({ ...turnoForm, hora_inicio: e.target.value })} />
                         <input type="number" step={0.25} min={0.25} className="input-field" placeholder="Horas (ej 8 o 9.5)" value={turnoForm.cantidad_horas} onChange={(e) => setTurnoForm({ ...turnoForm, cantidad_horas: e.target.value })} />
                       </div>
                       <button
                         className="btn-primary"
                         disabled={createTurno.isPending}
-                        onClick={async () => {
+                        onClick={() => {
                           if (!turnoForm.id_vigilador || !turnoForm.hora_inicio || !turnoForm.cantidad_horas) { toast.error('Completá vigilador, hora y horas'); return }
-                          const vId = Number(turnoForm.id_vigilador)
                           const diaSel = dias.find((d: any) => d.id_dia_planilla === selectedDia)
                           if (!diaSel) { toast.error('Día no válido'); return }
-                          const dv = await diaVigiladorService.getByVigiladorYFecha(vId, diaSel.fecha)
-                          if (!dv) { toast.error('No existe Día del Vigilador para ese vigilador y fecha. Agregalo a la planilla para generar sus días.'); return }
-                          createTurno.mutate({ id_dia_vigilador: dv.id_dia_vigilador, id_dia_planilla: selectedDia!, hora_inicio: turnoForm.hora_inicio, cantidad_horas: Number(turnoForm.cantidad_horas), id_planilla: planilla?.id_planilla } as any)
+                          createTurno.mutate({
+                            id_planilla: planillaId,
+                            id_vigilador: Number(turnoForm.id_vigilador),
+                            ...intervaloDesde(diaSel.fecha, turnoForm.hora_inicio, Number(turnoForm.cantidad_horas)),
+                          })
                         }}
                       >
                         {createTurno.isPending ? 'Creando...' : 'Crear turno'}
@@ -154,7 +165,7 @@ const PlanillaDetalleScreen: React.FC = () => {
                   )}
                 </div>
                 <ul className="text-sm text-gray-700 space-y-1 mt-4">
-                  {turnos.map((t: any) => (
+                  {turnos.map((t) => (
                     <li key={t.id_turno} className="flex items-center justify-between">
                       <span>#{t.id_turno} {t.hora_inicio} - {t.hora_fin} ({t.cantidad_horas} h)</span>
                     </li>

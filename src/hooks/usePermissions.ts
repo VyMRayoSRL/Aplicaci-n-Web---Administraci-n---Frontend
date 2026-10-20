@@ -18,6 +18,9 @@ export const usePermissions = () => {
     const canManagePlanillas = canManageServicios;
     const canManageVigiladores = canManageServicios;
     const canManageDPT = canManageServicios; // rutas DPT no restringen por rol, sólo auth+RLS
+    // Cerrar/reabrir planillas: admin y contabilidad. Eliminar (solo en borrador): admin.
+    const canClosePlanillas = role === 'admin' || role === 'contabilidad';
+    const canDeletePlanillas = role === 'admin';
 
     return {
       role,
@@ -29,6 +32,8 @@ export const usePermissions = () => {
       canManagePlanillas,
       canManageVigiladores,
       canManageDPT,
+      canClosePlanillas,
+      canDeletePlanillas,
     };
   }, [role]);
 };

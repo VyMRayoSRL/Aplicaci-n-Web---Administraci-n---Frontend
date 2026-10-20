@@ -11,3 +11,5 @@ build/
 src/xample/
 *.xlsx
 .expo/
+
+*.tsbuildinfo

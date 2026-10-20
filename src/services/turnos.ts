@@ -1,50 +1,35 @@
 import api from './api';
+import type { Turno, TurnoForm } from '../types';
+
+export type TurnosPorVigiladorYFecha = Record<number, Record<string, Turno[]>>;
 
 export const turnosService = {
-  async getByDiaPlanilla(idDiaPlanilla: number) {
-    const response = await api.get(`/turnos/dia-planilla/${idDiaPlanilla}`);
-    return response.data;
-  },
-
-  async listByDias(idsDiasPlanilla: number[]) {
-    const response = await api.post('/turnos/listar-por-dias', { idsDiasPlanilla });
-    return response.data;
-  },
-
-  async getByPlanilla(idPlanilla: number) {
+  async getByPlanilla(idPlanilla: number): Promise<Turno[]> {
     const response = await api.get(`/turnos/planilla/${idPlanilla}`);
     return response.data;
   },
 
-  async getByDiaVigilador(idDiaVigilador: number) {
-    const response = await api.get(`/turnos/dia-vigilador/${idDiaVigilador}`);
+  // Agenda del vigilador en todos los servicios (fechas YYYY-MM-DD, ambas incluidas)
+  async getByVigilador(idVigilador: number, desde: string, hasta: string): Promise<Turno[]> {
+    const response = await api.get(`/turnos/vigilador/${idVigilador}`, { params: { desde, hasta } });
     return response.data;
   },
 
-  async createTurno(payload: { id_dia_vigilador: number; id_dia_planilla: number; hora_inicio: string; cantidad_horas: number; turno_compartido?: boolean }) {
+  async createTurno(payload: TurnoForm): Promise<Turno> {
     const response = await api.post('/turnos', payload);
     return response.data;
   },
 
-  async createTurnosEnLote(payload: {
-    vigiladores: Array<{
-      id_vigilador: number;
-      dias_vigilador: Array<{ id_dia_vigilador: number; fecha: string; id_dia_planilla: number }>;
-    }>;
-    turnosOrganizadosPorDia: Array<{
-      id_dia_planilla: number;
-      vigiladores: Array<{
-        id_vigilador: number;
-        id_dia_vigilador: number;
-        turnos: Array<{ hora_inicio: string; cantidad_horas: number }>;
-      }>;
-    }>;
-  }) {
+  // Los inválidos no frenan al resto: vuelven en "fallidos" con el motivo
+  async createTurnosEnLote(payload: { id_planilla: number; turnos: Array<Omit<TurnoForm, 'id_planilla'>> }): Promise<{
+    creados: Turno[];
+    fallidos: Array<{ turno: Omit<TurnoForm, 'id_planilla'>; motivo: string }>;
+  }> {
     const response = await api.post('/turnos/lote', payload);
     return response.data;
   },
 
-  async updateTurno(id: number, data: Partial<{ hora_inicio: string; cantidad_horas: number; turno_compartido?: boolean }>) {
+  async updateTurno(id: number, data: Partial<Pick<TurnoForm, 'inicio' | 'fin'>>): Promise<Turno> {
     const response = await api.put(`/turnos/${id}`, data);
     return response.data;
   },
@@ -54,10 +39,9 @@ export const turnosService = {
     return response.data;
   },
 
-  async getBusyMapConflictos(payload: { vigiladorIds: number[]; from: string; to: string; excludePlanillaId?: number }) {
-    const response = await api.post('/turnos/conflictos/busy-map', payload);
-    return response.data as Record<number, Record<string, { hasConflict: boolean; detalles?: Array<{ servicio_nombre?: string; puesto_nombre?: string; hora_inicio: string; cantidad_horas: number }> }>>;
+  // Turnos de los vigiladores en otros puestos: información, no bloquean (R18)
+  async getEnOtrasPlanillas(payload: { vigiladorIds: number[]; desde: string; hasta: string; excluirPlanilla?: number }): Promise<TurnosPorVigiladorYFecha> {
+    const response = await api.post('/turnos/otras-planillas', payload);
+    return response.data;
   },
 };
-
-

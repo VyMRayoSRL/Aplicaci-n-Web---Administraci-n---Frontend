@@ -6,7 +6,7 @@ import { useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { usePlanilla } from '../hooks/usePlanillas';
 import { usePlanillaGrid } from '../hooks/usePlanillaGrid';
 import { weekdayLabelES } from '../utils/dateUtils';
-import { sumHoras, sumDiurnas, sumNocturnas } from '../utils/turnoUtils';
+import { sumHoras, sumDiurnas, sumNocturnas, intervaloDesde, cruzaMedianoche } from '../utils/turnoUtils';
 import { useCreateTurno, useDeleteTurno, useUpdateTurno, useAddVigiladorToPlanilla, useRemoveVigiladorFromPlanilla } from '../hooks/usePlanillaDetalle';
 import { usePermissions } from '../hooks/usePermissions';
 import { useVigiladores } from '../hooks/useVigiladores';
@@ -16,7 +16,11 @@ import type { DiaPlanilla, Turno, Vigilador } from '../types';
 import { DiaVigiladorEstado } from '../types';
 import { turnosService } from '../services/turnos';
 import { useUpdateDiaVigiladorEstado } from '../hooks/useDiaVigilador';
-import { useBusyMap } from '../hooks/useBusyMap';
+import { useTurnosEnOtrasPlanillas } from '../hooks/useTurnosEnOtrasPlanillas';
+import { EstadoPlanillaControl } from '../components/PlanillaEstado';
+import { planillasService } from '../services/planillas';
+import { getErrorMessage } from '../services/api';
+import toast from 'react-hot-toast';
 
 const PlanillaExcelScreen: React.FC = () => {
   const params = useParams();
@@ -44,6 +48,8 @@ const PlanillaExcelScreen: React.FC = () => {
   const removeVigilador = useRemoveVigiladorFromPlanilla(planillaId);
   const { data: allVigiladores = [] } = useVigiladores({ incluirInactivos: true });
   const perms = usePermissions();
+  // Con la planilla cerrada todo queda en solo lectura hasta que la reabran
+  const canEdit = perms.canManagePlanillas && planilla?.estado !== 'cerrada';
   const [modal, setModal] = useState<{ open: boolean; id_vigilador?: number; id_dia_planilla?: number }>({ open: false });
   const [form, setForm] = useState<{ hora_inicio: string; cantidad_horas: string }>({ hora_inicio: '', cantidad_horas: '' });
   // Estado para clonar un turno a otras fechas (mismo vigilador)
@@ -63,54 +69,33 @@ const PlanillaExcelScreen: React.FC = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [vigFilter, setVigFilter] = useState('');
   const updateDiaEstado = useUpdateDiaVigiladorEstado(planillaId);
-  const [conflictMap, setConflictMap] = useState<Record<string, boolean>>({});
-  const [conflictDetails, setConflictDetails] = useState<Record<string, any[]>>({});
 
-  // Busy map desde backend (batch)
+  // Turnos de los mismos vigiladores en otros puestos: se muestran como referencia, no bloquean (R18)
   const vigiladorIds = useMemo(() => (vigiladores as Vigilador[]).map(v => Number(v.id_vigilador)), [vigiladores]);
   const range = useMemo(() => {
     const first = (dias as DiaPlanilla[])[0]?.fecha;
     const last = (dias as DiaPlanilla[])[(dias as DiaPlanilla[]).length - 1]?.fecha;
     return { from: first, to: last };
   }, [dias]);
-  const { data: busyMap } = useBusyMap({ planillaId, vigiladorIds, from: range.from || '', to: range.to || '' });
+  const { data: otrasPlanillas } = useTurnosEnOtrasPlanillas({ planillaId, vigiladorIds, from: range.from || '', to: range.to || '' });
+  const turnosEnOtras = (id_vigilador: number, fecha: string): Turno[] => otrasPlanillas?.[id_vigilador]?.[fecha] || [];
+  const describirOtros = (ts: Turno[]) =>
+    ts.map(t => `${[t.servicio_nombre, t.puesto_nombre].filter(Boolean).join(' · ')} · ${t.hora_inicio}–${t.hora_fin}`).join('\n');
 
-  // Precargar conflictos para todas las celdas visibles al montar/actualizar datos
-  // Mapear busyMap del backend a conflictMap/local para UI
-  useEffect(() => {
-    if (!busyMap) return;
-    const newMap: Record<string, boolean> = {};
-    const newDetails: Record<string, any[]> = {};
-    for (const vigIdStr of Object.keys(busyMap)) {
-      const vigId = Number(vigIdStr);
-      const days = (busyMap as any)[vigIdStr] || {};
-      for (const fecha of Object.keys(days)) {
-        const entry = days[fecha];
-        const key = `${vigId}:${fecha}`;
-        if (entry?.hasConflict) newMap[key] = true; else newMap[key] = false;
-        if (Array.isArray(entry?.detalles)) newDetails[key] = entry.detalles;
-      }
-    }
-    setConflictMap(newMap);
-    setConflictDetails(newDetails);
-  }, [busyMap]);
-
-  const handleCellClick = async (id_vigilador: number, d: DiaPlanilla) => {
+  const handleCellClick = (id_vigilador: number, d: DiaPlanilla) => {
     if (!perms.canManagePlanillas) return;
-    const dv = diasVigiladorIndex[id_vigilador]?.[d.fecha];
-    if (!dv) {
-      const { toast } = await import('react-hot-toast');
-      toast.error('No existe Día del Vigilador. Agregalo a la planilla para generar sus días.');
-      return;
-    }
-    const key = `${id_vigilador}:${d.fecha}`;
-    const has = !!conflictMap[key];
-    if (has) {
-      const { toast } = await import('react-hot-toast');
-      toast.error('Conflicto: el vigilador ya tiene turnos en otro servicio este día');
-      return;
-    }
     openCell(id_vigilador, d.id_dia_planilla);
+  };
+
+  const quitarVigilador = async (v: Vigilador) => {
+    try {
+      const cantidad = await planillasService.contarTurnosVigilador(planillaId, v.id_vigilador);
+      const detalle = cantidad > 0 ? ` Se van a borrar sus ${cantidad} turno${cantidad === 1 ? '' : 's'} de esta planilla.` : '';
+      if (!window.confirm(`¿Quitar a ${v.apellido}, ${v.nombre} de la planilla?${detalle}`)) return;
+      removeVigilador.mutate(v.id_vigilador);
+    } catch (e) {
+      toast.error(getErrorMessage(e, 'No se pudieron consultar los turnos del vigilador'));
+    }
   };
 
   const exportToExcel = async () => {
@@ -196,20 +181,27 @@ const PlanillaExcelScreen: React.FC = () => {
     setModal({ open: true, id_vigilador, id_dia_planilla });
   };
 
-  const submitTurno = async () => {
+  const submitTurno = () => {
     if (!modal.id_dia_planilla || !modal.id_vigilador) return;
     const dia = dias.find((d: any) => d.id_dia_planilla === modal.id_dia_planilla);
     if (!dia) return;
-    // Resolver dia_vigilador por índice precargado (no crear automáticamente)
-    const dv = diasVigiladorIndex[modal.id_vigilador!]?.[dia.fecha];
-    if (!dv) { 
-      const { toast } = await import('react-hot-toast');
-      toast.error('No existe Día del Vigilador para ese vigilador y fecha. Agregalo a la planilla para generar sus días.');
-      return; 
+    const horas = Number(form.cantidad_horas);
+    if (!/^\d{2}:\d{2}$/.test(form.hora_inicio) || !(horas > 0)) {
+      toast.error('Completá la hora de inicio y las horas');
+      return;
     }
-    createTurno.mutate({ id_dia_vigilador: dv.id_dia_vigilador, id_dia_planilla: modal.id_dia_planilla, hora_inicio: form.hora_inicio, cantidad_horas: Number(form.cantidad_horas), id_planilla: planillaId } as any);
-    setModal({ open: false });
-    setForm({ hora_inicio: '', cantidad_horas: '' });
+    createTurno.mutate(
+      { id_planilla: planillaId, id_vigilador: modal.id_vigilador, ...intervaloDesde(dia.fecha, form.hora_inicio, horas) },
+      { onSuccess: () => setForm({ hora_inicio: '', cantidad_horas: '' }) },
+    );
+  };
+
+  // Cambia hora de inicio o duración de un turno manteniendo su fecha
+  const editarTurno = (t: Turno, cambios: { hora_inicio?: string; cantidad_horas?: number }) => {
+    const hora = cambios.hora_inicio ?? t.hora_inicio;
+    const horas = cambios.cantidad_horas ?? Number(t.cantidad_horas);
+    if (!/^\d{2}:\d{2}$/.test(hora) || !(horas > 0)) { toast.error('Hora u horas inválidas'); return; }
+    updateTurno.mutate({ id: t.id_turno, data: intervaloDesde(t.fecha, hora, horas) });
   };
 
   // Abrir el modal de clonado desde un turno existente de la celda
@@ -233,8 +225,7 @@ const PlanillaExcelScreen: React.FC = () => {
       for (let j = 0; j < g.length; j++) {
         const d = (dias as DiaPlanilla[])[g.startIndex + j];
         if (d.id_dia_planilla === cloneModal.id_dia_planilla_origen) continue;
-        const dv = diasVigiladorIndex[cloneModal.id_vigilador!]?.[d.fecha];
-        if (dv) days.push(d);
+        days.push(d);
       }
       weeks.push({ label: g.label, days });
     });
@@ -276,63 +267,27 @@ const PlanillaExcelScreen: React.FC = () => {
     const selectedIds = Object.keys(cloneSelection).map(k => Number(k));
     if (selectedIds.length === 0) { setCloneModal({ open: false }); return; }
 
-    // Filtrar destinos: deben tener dia_vigilador y no ser duplicados exactos
-    const filteredSet = new Set<number>();
-    for (const idDia of selectedIds) {
-      const d = (dias as DiaPlanilla[]).find(dd => dd.id_dia_planilla === idDia);
-      if (!d) continue;
-      const dv = diasVigiladorIndex[cloneModal.id_vigilador!]?.[d.fecha];
-      if (!dv) continue;
-      const key = `${idDia}:${cloneModal.id_vigilador}`;
-      const existing = (grid.get(key) || []) as Turno[];
-      const dup = existing.some(tt => tt.hora_inicio === hora_inicio && Number(tt.cantidad_horas) === Number(cantidad_horas));
-      if (!dup) filteredSet.add(idDia);
-    }
-    if (filteredSet.size === 0) { setCloneModal({ open: false }); return; }
-
-    // Armar payload para /turnos/lote
+    // Destinos sin un turno idéntico ya cargado
     const idVig = cloneModal.id_vigilador!;
-    const diasVigiladorListado = (dias as DiaPlanilla[])
-      .map(d => {
-        const dv = diasVigiladorIndex[idVig]?.[d.fecha];
-        return dv ? { id_dia_vigilador: dv.id_dia_vigilador as number, fecha: d.fecha as string, id_dia_planilla: d.id_dia_planilla as number } : null;
-      })
-      .filter(Boolean) as Array<{ id_dia_vigilador: number; fecha: string; id_dia_planilla: number }>;
-
-    const turnosOrganizadosPorDia = (dias as DiaPlanilla[]).map(d => {
-      if (!filteredSet.has(d.id_dia_planilla)) {
-        return { id_dia_planilla: d.id_dia_planilla, vigiladores: [] as any[] };
-      }
-      const dv = diasVigiladorIndex[idVig]?.[d.fecha];
-      if (!dv) return { id_dia_planilla: d.id_dia_planilla, vigiladores: [] as any[] };
-      return {
-        id_dia_planilla: d.id_dia_planilla,
-        vigiladores: [
-          {
-            id_vigilador: idVig,
-            id_dia_vigilador: dv.id_dia_vigilador as number,
-            turnos: [{ hora_inicio, cantidad_horas: Number(cantidad_horas) }],
-          },
-        ],
-      };
-    });
+    const turnos = (dias as DiaPlanilla[])
+      .filter(d => selectedIds.includes(d.id_dia_planilla))
+      .filter(d => !((grid.get(`${d.id_dia_planilla}:${idVig}`) || []) as Turno[])
+        .some(tt => tt.hora_inicio === hora_inicio && Number(tt.cantidad_horas) === Number(cantidad_horas)))
+      .map(d => ({ id_vigilador: idVig, ...intervaloDesde(d.fecha, hora_inicio, Number(cantidad_horas)) }));
+    if (turnos.length === 0) { setCloneModal({ open: false }); return; }
 
     try {
-      await turnosService.createTurnosEnLote({
-        vigiladores: [
-          {
-            id_vigilador: idVig,
-            dias_vigilador: diasVigiladorListado,
-          },
-        ],
-        turnosOrganizadosPorDia,
-      });
-    } catch {
-      // silencioso por preferencia actual
+      const { creados, fallidos } = await turnosService.createTurnosEnLote({ id_planilla: planillaId, turnos });
+      if (creados.length) toast.success(`${creados.length} turno${creados.length === 1 ? '' : 's'} creado${creados.length === 1 ? '' : 's'}`);
+      for (const f of fallidos) toast.error(`${f.turno.inicio.slice(0, 10)}: ${f.motivo}`, { duration: 6000 });
+      const avisos = creados.flatMap(t => (t.advertencias || []).map(a => `${t.fecha}: ${a.mensaje}`));
+      if (avisos.length) toast(avisos.join('\n'), { icon: '⚠️', duration: 8000 });
+    } catch (e) {
+      toast.error(getErrorMessage(e, 'No se pudieron clonar los turnos'));
     }
 
     if (planillaId) {
-      qc.invalidateQueries({ queryKey: ['turnos', 'planilla', planillaId] });
+      qc.invalidateQueries({ queryKey: ['turnos'] });
       qc.invalidateQueries({ queryKey: ['planilla', planillaId, 'dias'] });
     }
     setCloneModal({ open: false });
@@ -341,10 +296,18 @@ const PlanillaExcelScreen: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Planilla (vista Excel) #{planilla?.id_planilla}</h1>
-        <p className="text-sm text-gray-600">Mes {planilla?.mes}/{planilla?.anio}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{ctxNames.pn || `Planilla #${planilla?.id_planilla ?? ''}`}</h1>
+          <p className="text-sm text-gray-600">{ctxNames.sn ? `${ctxNames.sn} · ` : ''}{planilla ? `${String(planilla.mes).padStart(2, '0')}/${planilla.anio}` : ''}</p>
+        </div>
+        <EstadoPlanillaControl planilla={planilla} />
       </div>
+      {planilla?.estado === 'cerrada' && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700">
+          Planilla cerrada: se puede consultar pero no modificar. Admin o contabilidad pueden reabrirla.
+        </div>
+      )}
 
       <PlanillaToolbar
         zoom={zoom}
@@ -353,7 +316,7 @@ const PlanillaExcelScreen: React.FC = () => {
         onZoomReset={zoomReset}
         showWeeklyTotals={showWeeklyTotals}
         onToggleWeeklyTotals={setShowWeeklyTotals}
-        canManage={perms.canManagePlanillas}
+        canManage={canEdit}
         onAddVigilador={() => setAddModalOpen(true)}
         onExport={exportToExcel}
       />
@@ -406,12 +369,12 @@ const PlanillaExcelScreen: React.FC = () => {
                 <td className="border px-3 py-2 sticky left-0 bg-white text-sm font-medium">
                   <div className="flex items-center justify-between gap-2">
                     <span>Leg {v.legajo} - {v.apellido}, {v.nombre}</span>
-                    {perms.canManagePlanillas && (
+                    {canEdit && (
                       <button
                         title="Quitar vigilador"
                         aria-label={`Quitar vigilador ${v.apellido}, ${v.nombre}`}
                         className="p-1.5 rounded-full hover:bg-red-50 text-red-600 inline-flex"
-                        onClick={() => removeVigilador.mutate(v.id_vigilador)}
+                        onClick={() => quitarVigilador(v)}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -429,22 +392,8 @@ const PlanillaExcelScreen: React.FC = () => {
                         return (
                           <td
                             key={`${d.id_dia_planilla}:${v.id_vigilador}`}
-                            className={`border px-3 py-3 ${conflictMap[`${v.id_vigilador}:${d.fecha}`] ? 'bg-amber-50 cursor-not-allowed' : 'hover:bg-blue-50 cursor-pointer'} align-top ${isMonday(d.fecha) ? 'border-l-2 border-gray-400' : ''} ${!conflictMap[`${v.id_vigilador}:${d.fecha}`] && isWeekend(d.fecha) ? 'bg-rose-50' : ''}`}
-                            title={(() => {
-                              const cKey = `${v.id_vigilador}:${d.fecha}`;
-                              const conflicts = conflictDetails[cKey];
-                              if (Array.isArray(conflicts) && conflicts.length > 0) {
-                                return conflicts.map((t: any) => {
-                                  const servicioNombre = t?.servicio?.nombre || t?.puesto?.servicio?.nombre || t?.servicio_nombre || '';
-                                  const puestoNombre = t?.puesto?.nombre || t?.puesto_nombre || '';
-                                  const inicio = t?.hora_inicio || '';
-                                  const horas = typeof t?.cantidad_horas !== 'undefined' ? `${t.cantidad_horas}h` : '';
-                                  return `${[servicioNombre, puestoNombre].filter(Boolean).join(' · ')}${inicio ? ` · ${inicio}` : ''}${horas ? ` · ${horas}` : ''}`.trim();
-                                }).join('\n');
-                              }
-                              return conflictMap[cKey] ? 'Conflicto con otro servicio' : undefined;
-                            })()}
-                            onMouseEnter={() => {/* no-op, ya viene del busy map */}}
+                            className={`border px-3 py-3 align-top ${perms.canManagePlanillas ? 'hover:bg-blue-50 cursor-pointer' : ''} ${isMonday(d.fecha) ? 'border-l-2 border-gray-400' : ''} ${isWeekend(d.fecha) ? 'bg-rose-50' : ''}`}
+                            title={turnosEnOtras(v.id_vigilador, d.fecha).length ? `También trabaja en:\n${describirOtros(turnosEnOtras(v.id_vigilador, d.fecha))}` : undefined}
                             onClick={() => handleCellClick(v.id_vigilador, d)}
                           >
                             {ts.length === 0 ? (
@@ -472,18 +421,9 @@ const PlanillaExcelScreen: React.FC = () => {
                                 est === DiaVigiladorEstado.FERIADO ? 'bg-green-100 text-green-800' :
                                 est === DiaVigiladorEstado.ENFERMO ? 'bg-orange-100 text-orange-800' :
                                 'bg-gray-100 text-gray-700';
-                              const cKey = `${v.id_vigilador}:${d.fecha}`;
-                              const conflicts = conflictDetails[cKey];
-                              const hasConflict = Array.isArray(conflicts) ? conflicts.length > 0 : !!conflictMap[cKey];
-                              const title = Array.isArray(conflicts) && conflicts.length > 0
-                                ? conflicts.map((t: any) => {
-                                    const servicioNombre = t?.servicio?.nombre || t?.puesto?.servicio?.nombre || t?.servicio_nombre || '';
-                                    const puestoNombre = t?.puesto?.nombre || t?.puesto_nombre || '';
-                                    const inicio = t?.hora_inicio || '';
-                                    const horas = typeof t?.cantidad_horas !== 'undefined' ? `${t.cantidad_horas}h` : '';
-                                    return `${[servicioNombre, puestoNombre].filter(Boolean).join(' · ')}${inicio ? ` · ${inicio}` : ''}${horas ? ` · ${horas}` : ''}`.trim();
-                                  }).join('\n')
-                                : 'Conflicto con otro servicio';
+                              const otros = turnosEnOtras(v.id_vigilador, d.fecha);
+                              const hasConflict = otros.length > 0;
+                              const title = `También trabaja en:\n${describirOtros(otros)}`;
                               return (
                                 <div className="mt-1 flex items-center gap-1">
                                   {(est !== DiaVigiladorEstado.TRABAJA && est !== DiaVigiladorEstado.NO_ASIGNADO) && (
@@ -629,7 +569,7 @@ const PlanillaExcelScreen: React.FC = () => {
 
       {/* Modal agregar vigilador */}
       <Modal
-        open={addModalOpen && perms.canManagePlanillas}
+        open={addModalOpen && canEdit}
         title="Agregar vigilador a la planilla"
         onClose={() => setAddModalOpen(false)}
         footer={<button className="btn-secondary" onClick={() => setAddModalOpen(false)}>Cerrar</button>}
@@ -682,7 +622,7 @@ const PlanillaExcelScreen: React.FC = () => {
       </Modal>
       {/* Modal clonar turno */}
       <Modal
-        open={cloneModal.open && perms.canManagePlanillas}
+        open={cloneModal.open && canEdit}
         title="Clonar turno a otras fechas"
         onClose={() => setCloneModal({ open: false })}
         footer={(
@@ -761,17 +701,17 @@ const PlanillaExcelScreen: React.FC = () => {
                       <li key={t.id_turno} className="border rounded p-2 text-sm">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <input className="input-field w-24" defaultValue={t.hora_inicio} onBlur={(e) => {
+                            <input type="time" step={1800} className="input-field w-28" defaultValue={t.hora_inicio} disabled={!canEdit} onBlur={(e) => {
                               const val = e.target.value;
-                              if (val !== t.hora_inicio) updateTurno.mutate({ id: t.id_turno, data: { hora_inicio: val } });
+                              if (val && val !== t.hora_inicio) editarTurno(t, { hora_inicio: val });
                             }} />
-                            <input className="input-field w-20" defaultValue={t.cantidad_horas} onBlur={(e) => {
+                            <input type="number" step={0.5} min={0.5} max={24} className="input-field w-20" defaultValue={t.cantidad_horas} disabled={!canEdit} onBlur={(e) => {
                               const num = Number(e.target.value);
-                              if (!Number.isNaN(num) && num !== t.cantidad_horas) updateTurno.mutate({ id: t.id_turno, data: { cantidad_horas: num } });
+                              if (num > 0 && num !== Number(t.cantidad_horas)) editarTurno(t, { cantidad_horas: num });
                             }} />
                             <span className="text-gray-500">→ {t.hora_fin}</span>
                           </div>
-                          {perms.canManagePlanillas && (
+                          {canEdit && (
                             <div className="flex items-center gap-3">
                               <button className="text-blue-600" onClick={() => openCloneFromTurno(t)}>Clonar</button>
                               <button className="text-red-600" onClick={() => deleteTurno.mutate(t.id_turno)}>Eliminar</button>
@@ -782,11 +722,10 @@ const PlanillaExcelScreen: React.FC = () => {
                           <div><span className="text-gray-500">ID:</span> {t.id_turno}</div>
                           {typeof t.id_vigilador !== 'undefined' && <div><span className="text-gray-500">Vigilador:</span> {t.id_vigilador}</div>}
                           <div><span className="text-gray-500">Día planilla:</span> {t.id_dia_planilla}</div>
-                          <div><span className="text-gray-500">Día vigilador:</span> {t.id_dia_vigilador}</div>
                           <div><span className="text-gray-500">Diurnas:</span> {t.horas_diurnas}</div>
                           <div><span className="text-gray-500">Nocturnas:</span> {t.horas_nocturnas}</div>
                           <div className="col-span-2">
-                            {t.hora_fin <= t.hora_inicio ? (
+                            {cruzaMedianoche(t) ? (
                               <span className="inline-block px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">Cruza medianoche</span>
                             ) : (
                               <span className="inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-700">Mismo día</span>
@@ -832,6 +771,7 @@ const PlanillaExcelScreen: React.FC = () => {
                       <select
                         className="input-field"
                         value={allowedOptions.includes(selectedValue) ? selectedValue : allowedOptions[0]}
+                        disabled={!canEdit}
                         onChange={(e) => {
                           const estado = e.target.value as EstadoDia;
                           updateDiaEstado.mutate({ id_dia_vigilador: dv.id_dia_vigilador, estado });
@@ -854,14 +794,17 @@ const PlanillaExcelScreen: React.FC = () => {
             </div>
 
             {/* Crear nuevo turno */}
+            {canEdit && (
             <div className="space-y-2">
               <h4 className="font-medium text-sm">Crear nuevo turno</h4>
               <div className="grid grid-cols-3 gap-2">
-                <input className="input-field" placeholder="Hora inicio (HH:mm)" value={form.hora_inicio} onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })} />
-                <input className="input-field" placeholder="Horas (ej 8)" value={form.cantidad_horas} onChange={(e) => setForm({ ...form, cantidad_horas: e.target.value })} />
-                <button className="btn-primary" onClick={submitTurno} disabled={createTurno.isPending}>{createTurno.isPending ? 'Creando...' : 'Crear'}</button>
+                <input type="time" step={1800} className="input-field" aria-label="Hora de inicio" value={form.hora_inicio} onChange={(e) => setForm({ ...form, hora_inicio: e.target.value })} />
+                <input type="number" step={0.5} min={0.5} max={24} className="input-field" placeholder="Horas (ej. 8)" value={form.cantidad_horas} onChange={(e) => setForm({ ...form, cantidad_horas: e.target.value })} />
+                <button className="btn-primary" onClick={submitTurno} disabled={createTurno.isPending}>{createTurno.isPending ? 'Creando…' : 'Crear'}</button>
               </div>
+              <p className="text-[11px] text-gray-500">Si termina después de medianoche, el turno sigue al día siguiente y se liquida en este día.</p>
             </div>
+            )}
 
             <div className="flex justify-end">
               <button className="btn-secondary" onClick={() => setModal({ open: false })}>Cerrar</button>

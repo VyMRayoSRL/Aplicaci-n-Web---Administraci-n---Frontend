@@ -2,7 +2,8 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import EditableVigiladorCalendar from '../components/EditableVigiladorCalendar'
-import { DiaVigilador, DiaVigiladorEstado, Vigilador } from '../types'
+import { DiaVigilador, DiaVigiladorEstado, Vigilador, Turno, TurnoForm } from '../types'
+import { intervaloDesde } from '../utils/turnoUtils'
 import { vigiladoresService } from '../services/vigiladores'
 import { diaVigiladorService } from '../services/diaVigilador'
 import { serviciosService } from '../services/servicios'
@@ -59,8 +60,8 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
   })
 
   const [estadoModal, setEstadoModal] = useState<{ open: boolean; fecha?: string; idDia?: number; estado?: string }>({ open: false })
-  const [turnosModal, setTurnosModal] = useState<{ open: boolean; fecha?: string; idDia?: number }>({ open: false })
-  const [turnosList, setTurnosList] = useState<any[]>([])
+  const [turnosModal, setTurnosModal] = useState<{ open: boolean; fecha?: string }>({ open: false })
+  const [turnosList, setTurnosList] = useState<Turno[]>([])
   const [loadingTurnos, setLoadingTurnos] = useState<boolean>(false)
 
   const handleOpenEstado = async (fecha: string) => {
@@ -98,31 +99,19 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
     queryFn: () => planillasService.getByPuesto(Number(puestoSel)),
   })
   const [planillaSel, setPlanillaSel] = useState<number | ''>('')
-  const { data: diasPlanilla = [] } = useQuery<any[]>({
-    enabled: !!planillaSel,
-    queryKey: ['dias-por-planilla', planillaSel],
-    queryFn: () => planillasService.getDias(Number(planillaSel)),
-  })
-  const [diaPlanillaSel, setDiaPlanillaSel] = useState<number | ''>('')
   const [horaInicio, setHoraInicio] = useState<string>('08:00')
   const [cantHoras, setCantHoras] = useState<number>(8)
 
-  const loadTurnos = async (idDia: number, fecha: string) => {
+  // Turnos del vigilador que empiezan ese día, en todos los servicios
+  const loadTurnos = async (fecha: string) => {
+    if (!selected) return
     setLoadingTurnos(true)
     try {
-      const list = await turnosService.getByDiaVigilador(idDia)
-      const norm = Array.isArray(list) ? list : []
-      setTurnosList(norm)
+      const list = (await turnosService.getByVigilador(selected.id_vigilador, fecha, fecha)).filter(t => t.fecha === fecha)
+      setTurnosList(list)
       setTurnosByDate(prev => ({
         ...prev,
-        [fecha]: norm.map((t: any) => ({
-          hora_inicio: t.hora_inicio,
-          hora_fin: t.hora_fin,
-          cantidad_horas: t.cantidad_horas,
-          horas_totales: t.horas_totales,
-          puesto_nombre: t.puesto?.nombre,
-          id_puesto: t.puesto?.id_puesto,
-        }))
+        [fecha]: list.map(t => ({ hora_inicio: t.hora_inicio, hora_fin: t.hora_fin, cantidad_horas: t.cantidad_horas, puesto_nombre: t.puesto_nombre })),
       }))
     } catch (e: any) {
       toast.error(getErrorMessage(e, 'Error al cargar turnos'))
@@ -133,39 +122,32 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
 
   const openTurnos = async (fecha: string) => {
     if (!selected) return
-    try {
-      const dia = await diaVigiladorService.getByVigiladorYFecha(selected.id_vigilador, fecha)
-      if (!dia?.id_dia_vigilador) {
-        const created = await diaVigiladorService.createDia({ id_vigilador: selected.id_vigilador, fecha, estado: DiaVigiladorEstado.NO_ASIGNADO })
-        setTurnosModal({ open: true, fecha, idDia: created.id_dia_vigilador })
-        await loadTurnos(created.id_dia_vigilador, fecha)
-      } else {
-        setTurnosModal({ open: true, fecha, idDia: dia.id_dia_vigilador })
-        await loadTurnos(dia.id_dia_vigilador, fecha)
-      }
-      setServSel('')
-      setPuestoSel('')
-      setPlanillaSel('')
-      setDiaPlanillaSel('')
-    } catch (e: any) {
-      toast.error(getErrorMessage(e, 'No se pudo abrir gestión de turnos'))
-    }
+    setTurnosModal({ open: true, fecha })
+    setServSel('')
+    setPuestoSel('')
+    setPlanillaSel('')
+    await loadTurnos(fecha)
   }
 
+  const avisar = (t: Turno) => { for (const a of t.advertencias || []) toast(a.mensaje, { icon: '⚠️', duration: 6000 }) }
+
   const createTurno = useMutation({
-    mutationFn: (payload: { id_dia_vigilador: number; id_dia_planilla: number; hora_inicio: string; cantidad_horas: number }) => turnosService.createTurno(payload as any),
-    onSuccess: async () => {
+    mutationFn: (payload: TurnoForm) => turnosService.createTurno(payload),
+    onSuccess: async (turno) => {
       toast.success('Turno creado')
-      if (turnosModal.idDia && turnosModal.fecha) await loadTurnos(turnosModal.idDia, turnosModal.fecha)
+      avisar(turno)
+      if (turnosModal.fecha) await loadTurnos(turnosModal.fecha)
+      refetchDias()
     },
     onError: (e: any) => toast.error(getErrorMessage(e, 'Error al crear turno')),
   })
 
   const updateTurno = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<{ hora_inicio: string; cantidad_horas: number }> }) => turnosService.updateTurno(id, data as any),
-    onSuccess: async () => {
+    mutationFn: ({ id, data }: { id: number; data: Pick<TurnoForm, 'inicio' | 'fin'> }) => turnosService.updateTurno(id, data),
+    onSuccess: async (turno) => {
       toast.success('Turno actualizado')
-      if (turnosModal.idDia && turnosModal.fecha) await loadTurnos(turnosModal.idDia, turnosModal.fecha)
+      avisar(turno)
+      if (turnosModal.fecha) await loadTurnos(turnosModal.fecha)
     },
     onError: (e: any) => toast.error(getErrorMessage(e, 'Error al actualizar turno')),
   })
@@ -174,7 +156,8 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
     mutationFn: (id: number) => turnosService.deleteTurno(id),
     onSuccess: async () => {
       toast.success('Turno eliminado')
-      if (turnosModal.idDia && turnosModal.fecha) await loadTurnos(turnosModal.idDia, turnosModal.fecha)
+      if (turnosModal.fecha) await loadTurnos(turnosModal.fecha)
+      refetchDias()
     },
     onError: (e: any) => toast.error(getErrorMessage(e, 'Error al eliminar turno')),
   })
@@ -209,15 +192,6 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
       setPlanillaSel(planillas[0].id_planilla)
     }
   }, [turnosModal.open, puestoSel, planillas, mes, anio])
-
-  // 4) Preseleccionar día de planilla que coincida con la fecha del modal
-  useEffect(() => {
-    if (!turnosModal.open) return
-    if (!planillaSel || !turnosModal.fecha) return
-    if (!Array.isArray(diasPlanilla) || diasPlanilla.length === 0) return
-    const day = diasPlanilla.find((d: any) => String(d.fecha) === String(turnosModal.fecha))
-    if (day && diaPlanillaSel !== day.id_dia_planilla) setDiaPlanillaSel(day.id_dia_planilla)
-  }, [turnosModal.open, planillaSel, diasPlanilla, turnosModal.fecha])
 
   return (
     <div className="p-4 space-y-4">
@@ -322,13 +296,12 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
             <button
               className="px-3 py-1 bg-blue-600 text-white rounded"
               onClick={async () => {
-                if (!turnosModal.idDia || !diaPlanillaSel) { toast.error('Seleccione servicio/puesto/planilla/día'); return }
+                if (!selected || !turnosModal.fecha || !planillaSel) { toast.error('Elegí servicio, puesto y planilla'); return }
                 try {
                   await createTurno.mutateAsync({
-                    id_dia_vigilador: turnosModal.idDia,
-                    id_dia_planilla: Number(diaPlanillaSel),
-                    hora_inicio: horaInicio,
-                    cantidad_horas: Number(cantHoras),
+                    id_planilla: Number(planillaSel),
+                    id_vigilador: selected.id_vigilador,
+                    ...intervaloDesde(turnosModal.fecha, horaInicio, Number(cantHoras)),
                   })
                 } catch {}
               }}
@@ -339,33 +312,27 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <label className="text-sm text-gray-700">Servicio
-              <select className="mt-1 w-full border rounded px-2 py-1" value={servSel} onChange={e => { setServSel(e.target.value ? Number(e.target.value) : ''); setPuestoSel(''); setPlanillaSel(''); setDiaPlanillaSel('') }}>
+              <select className="mt-1 w-full border rounded px-2 py-1" value={servSel} onChange={e => { setServSel(e.target.value ? Number(e.target.value) : ''); setPuestoSel(''); setPlanillaSel('') }}>
                 <option value="">Seleccionar</option>
                 {servicios.map((s: any) => <option key={s.id_servicio} value={s.id_servicio}>{s.nombre}</option>)}
               </select>
             </label>
             <label className="text-sm text-gray-700">Puesto
-              <select className="mt-1 w-full border rounded px-2 py-1" value={puestoSel} onChange={e => { setPuestoSel(e.target.value ? Number(e.target.value) : ''); setPlanillaSel(''); setDiaPlanillaSel('') }} disabled={!servSel}>
+              <select className="mt-1 w-full border rounded px-2 py-1" value={puestoSel} onChange={e => { setPuestoSel(e.target.value ? Number(e.target.value) : ''); setPlanillaSel('') }} disabled={!servSel}>
                 <option value="">Seleccionar</option>
                 {puestos.map((p: any) => <option key={p.id_puesto} value={p.id_puesto}>{p.nombre}</option>)}
               </select>
             </label>
             <label className="text-sm text-gray-700">Planilla
-              <select className="mt-1 w-full border rounded px-2 py-1" value={planillaSel} onChange={e => { setPlanillaSel(e.target.value ? Number(e.target.value) : ''); setDiaPlanillaSel('') }} disabled={!puestoSel}>
+              <select className="mt-1 w-full border rounded px-2 py-1" value={planillaSel} onChange={e => setPlanillaSel(e.target.value ? Number(e.target.value) : '')} disabled={!puestoSel}>
                 <option value="">Seleccionar</option>
                 {planillas.map((pl: any) => <option key={pl.id_planilla} value={pl.id_planilla}>{pl.mes}/{pl.anio}</option>)}
-              </select>
-            </label>
-            <label className="text-sm text-gray-700">Día de planilla
-              <select className="mt-1 w-full border rounded px-2 py-1" value={diaPlanillaSel} onChange={e => setDiaPlanillaSel(e.target.value ? Number(e.target.value) : '')} disabled={!planillaSel}>
-                <option value="">Seleccionar</option>
-                {diasPlanilla.map((dp: any) => <option key={dp.id_dia_planilla} value={dp.id_dia_planilla}>{dp.fecha}</option>)}
               </select>
             </label>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-sm text-gray-700">Hora inicio
-              <input type="time" className="mt-1 w-full border rounded px-2 py-1" value={horaInicio} onChange={e => setHoraInicio(e.target.value)} />
+              <input type="time" step={1800} className="mt-1 w-full border rounded px-2 py-1" value={horaInicio} onChange={e => setHoraInicio(e.target.value)} />
             </label>
             <label className="text-sm text-gray-700">Horas
               <input type="number" step={0.25} min={0.25} className="mt-1 w-full border rounded px-2 py-1" value={cantHoras} onChange={e => setCantHoras(Math.max(0.25, Number(e.target.value)))} />
@@ -380,14 +347,14 @@ const GestionPlanillaVigiladorScreen: React.FC = () => {
               <div className="text-sm text-gray-500">Sin turnos</div>
             ) : (
               <ul className="space-y-1">
-                {turnosList.map((t: any) => (
+                {turnosList.map((t) => (
                   <li key={t.id_turno} className="flex items-center justify-between text-sm bg-gray-50 border rounded px-2 py-1">
-                    <span>{t.hora_inicio} → {t.hora_fin} · {t.cantidad_horas}h{t.puesto?.nombre ? ` · ${t.puesto.nombre}` : ''}</span>
+                    <span>{t.hora_inicio} → {t.hora_fin} · {t.cantidad_horas}h · {t.servicio_nombre} · {t.puesto_nombre}</span>
                     <div className="flex gap-2">
                       <button className="px-2 py-0.5 border rounded" onClick={async () => {
                         const ni = prompt('Nueva hora inicio (HH:mm)', t.hora_inicio) || t.hora_inicio
                         const nh = Number(prompt('Horas', String(t.cantidad_horas)) || t.cantidad_horas)
-                        try { await updateTurno.mutateAsync({ id: t.id_turno, data: { hora_inicio: ni, cantidad_horas: nh } }) } catch {}
+                        try { await updateTurno.mutateAsync({ id: t.id_turno, data: intervaloDesde(t.fecha, ni, nh) }) } catch {}
                       }}>Editar</button>
                       <button className="px-2 py-0.5 border rounded text-red-600" onClick={async () => {
                         if (!confirm('¿Eliminar turno?')) return
