@@ -161,42 +161,64 @@ export interface TurnoForm {
   fin: string;
 }
 
-export interface DiaVigiladorIndexMap {
-  [idVigilador: number]: { [fecha: string]: any };
+// Novedad del vigilador por rango de fechas (R25/R26). Otros casos: licencia + observación.
+export type NovedadTipo = 'ausente' | 'enfermo' | 'licencia' | 'vacaciones' | 'franco' | 'suspension';
+
+export interface NovedadAdjunto {
+  id_adjunto: number;
+  nombre: string;
+  tipo_mime: string;
+  tamano: number;
+  creado_en: string;
 }
 
-export interface DiaVigilador {
-  id_dia_vigilador: number;
+export interface Novedad {
+  id_novedad: number;
   id_vigilador: number;
-  fecha: string;
-  estado: 'trabaja' | 'franco' | 'ausente' | 'vacaciones' | 'licencia' | 'feriado' | 'enfermo' | 'No Asignado';
+  tipo: NovedadTipo;
+  desde: string;
+  hasta: string;
+  observacion: string | null;
+  adjuntos: NovedadAdjunto[];
+  // justificada: no trabajar se paga como día normal; pendiente: enfermo sin certificado
+  justificacion: 'justificada' | 'pendiente' | 'injustificada';
 }
 
-// Estados compartidos
+export interface NovedadForm {
+  id_vigilador: number;
+  tipo: NovedadTipo;
+  desde: string;
+  hasta: string;
+  observacion?: string | null;
+}
+
+// Todo lo que muestra la pantalla de planilla (GET /planillas/:id/grilla)
+export interface Grilla {
+  planilla: Planilla & { puesto_nombre: string; servicio_nombre: string; id_servicio: number; horas_contratadas: number };
+  permisos: { editar: boolean; cambiarEstado: boolean; cerrar: boolean; eliminar: boolean };
+  dias: DiaPlanilla[];
+  vigiladores: Vigilador[];
+  turnos: Turno[];
+  novedades: Novedad[];
+  otrasPlanillas: Record<number, Record<string, Turno[]>>;
+  totales: { requeridas: number; trabajadas: number; cumplidas: number; contratadas: number };
+}
+
+// Estados de la comparación con fichadas (los textos vienen del back)
 export const AsistenciaEstado = {
   OK: 'OK',
   DESVIO: 'El tiempo registrado es mayor al tiempo planificado',
-  SIN_PLANIFICACION: 'SIN_PLANIFICACION',
-  VIGILADOR_DESCONOCIDO: 'VIGILADOR_DESCONOCIDO',
-  SIN_COMPARACION: 'SIN_COMPARACION',
-  NO_ASIGNADO: 'El estado del vigilador no debería quedar como "No Asignado"',
+  SIN_PLANIFICACION: 'El día no tiene turnos planificados dentro del sistema',
+  VIGILADOR_DESCONOCIDO: 'El legajo no coincide con un vigilador en el sistema',
+  SIN_COMPARACION: 'No se comparó la asistencia',
   MALA_PLANIFICACION_TURNOS: 'Tuvo turnos registrados pero no planificados y su estado tampoco concuerda',
-  TURNOS_SIN_ASISTENCIA: 'Hubo turnos planificados pero no se registraron asistencias para este día',
+  TURNOS_SIN_ASISTENCIA: 'Ausencia injustificada: tenía turnos y no fichó, sin novedad cargada',
   ASISTENCIAS_SIN_TURNOS: 'Tuvo asistencias registradas pero no turnos planificados para este día',
+  AUSENCIA_JUSTIFICADA: 'Ausencia justificada por una novedad',
+  CERTIFICADO_PENDIENTE: 'Enfermo sin certificado adjunto: ausencia pendiente de justificar',
+  NOVEDAD_SIN_TURNOS: 'Día con novedad y sin turnos planificados',
 } as const
 export type AsistenciaEstadoType = typeof AsistenciaEstado[keyof typeof AsistenciaEstado]
-
-export const DiaVigiladorEstado = {
-  TRABAJA: 'trabaja',
-  NO_ASIGNADO: 'No Asignado',
-  FRANCO: 'franco',
-  AUSENTE: 'ausente',
-  VACACIONES: 'vacaciones',
-  LICENCIA: 'licencia',
-  FERIADO: 'feriado',
-  ENFERMO: 'enfermo',
-} as const
-export type DiaVigiladorEstadoType = typeof DiaVigiladorEstado[keyof typeof DiaVigiladorEstado]
 
 export interface Vigilador {
   id_vigilador: number;
@@ -270,9 +292,11 @@ export interface ComparacionDetalle {
 
 export interface ComparacionAsistencia extends AsistenciaExcel {
   id_vigilador?: number;
-  estado: EstadoComparacion;
+  estado: EstadoComparacion | AsistenciaEstadoType;
   comparaciones?: ComparacionDetalle[];
-  delta_total_min?: number;
+  delta_total_min?: number | null;
+  novedad?: Novedad | null;
+  horas_justificadas?: number;
   desglose_por_lugar?: DesglosePorLugarSegment[];
 }
 
@@ -322,6 +346,8 @@ export interface ResumenMensualTodos {
   horas_nocturnas: number;
   horas_totales: number;
   dias_trabajados: number;
+  // Horas planificadas de días con novedad justificada (se pagan como día normal)
+  horas_justificadas: number;
 }
 
 // Tipos para formularios y filtros

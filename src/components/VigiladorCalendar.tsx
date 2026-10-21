@@ -124,9 +124,12 @@ const VigiladorCalendar: React.FC<Props> = ({ dias, mes, anio, idVigilador: _idV
               detalle = `Δ inicio ${di}m · Δ fin ${df}m`
             }
             nextInfo[dateStr] = `Desvío fuera de tolerancia (${totalDelta}m). ${detalle}`.trim()
-          } else if (estado === AsistenciaEstado.NO_ASIGNADO) {
+          } else if (estado === AsistenciaEstado.AUSENCIA_JUSTIFICADA || estado === AsistenciaEstado.NOVEDAD_SIN_TURNOS) {
+            next[dateStr] = 'ok'
+            nextInfo[dateStr] = `${estado}${match.novedad ? ` (${match.novedad.tipo})` : ''}`
+          } else if (estado === AsistenciaEstado.CERTIFICADO_PENDIENTE) {
             next[dateStr] = 'warning'
-            nextInfo[dateStr] = 'El estado del vigilador no debería quedar como "No Asignado"'
+            nextInfo[dateStr] = estado
           } else if (estado === AsistenciaEstado.ASISTENCIAS_SIN_TURNOS) {
             //Deberíamos poder mostrar las entradas y salidas que se registraron pero que no hubo turnos para las mismas
             const entradas = match.pares.map((p: any) => p.entrada)
@@ -136,7 +139,6 @@ const VigiladorCalendar: React.FC<Props> = ({ dias, mes, anio, idVigilador: _idV
             nextInfo[dateStr] = `Entradas: ${entradasStr} · Salidas: ${salidasStr} · Estado: ${match.estado}`
           } else {
           nextInfo[dateStr] = `Estado: ${match.estado}`
-          console.log('Estado:', match.estado)
           }
         }
       }

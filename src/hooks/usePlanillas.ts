@@ -81,6 +81,7 @@ export const useCambiarEstadoPlanilla = (id: number) => {
     onSuccess: (planilla) => {
       queryClient.setQueryData(['planilla', id], planilla);
       queryClient.invalidateQueries({ queryKey: ['planillas'] });
+      queryClient.invalidateQueries({ queryKey: ['grilla', id] });
       const textos: Record<PlanillaEstado, string> = { borrador: 'Planilla en borrador', vigente: 'Planilla vigente', cerrada: 'Planilla cerrada' };
       toast.success(textos[planilla.estado]);
     },

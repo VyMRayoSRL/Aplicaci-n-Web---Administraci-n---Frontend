@@ -54,8 +54,12 @@ const ImportarAsistenciasScreen: React.FC = () => {
 
   const badge = (estado: string) => {
     const base = 'px-2 py-0.5 rounded text-xs font-medium '
-    switch (String(estado).toUpperCase()) {
+    switch (String(estado)) {
       case AsistenciaEstado.OK: return base + 'bg-green-100 text-green-800'
+      case AsistenciaEstado.AUSENCIA_JUSTIFICADA: return base + 'bg-emerald-100 text-emerald-800'
+      case AsistenciaEstado.NOVEDAD_SIN_TURNOS: return base + 'bg-sky-100 text-sky-800'
+      case AsistenciaEstado.CERTIFICADO_PENDIENTE: return base + 'bg-amber-100 text-amber-800'
+      case AsistenciaEstado.TURNOS_SIN_ASISTENCIA: return base + 'bg-red-100 text-red-800'
       case AsistenciaEstado.DESVIO: return base + 'bg-yellow-100 text-yellow-800'
       case AsistenciaEstado.SIN_PLANIFICACION: return base + 'bg-orange-100 text-orange-800'
       case AsistenciaEstado.VIGILADOR_DESCONOCIDO: return base + 'bg-red-100 text-red-800'

@@ -1,5 +1,5 @@
 import api from './api';
-import { Planilla, PlanillaEstado, PlanillaForm } from '../types';
+import { Grilla, Planilla, PlanillaEstado, PlanillaForm } from '../types';
 
 export const planillasService = {
   async getById(id: number): Promise<Planilla> {
@@ -24,6 +24,12 @@ export const planillasService = {
 
   async cambiarEstado(id: number, estado: PlanillaEstado): Promise<Planilla> {
     const response = await api.patch(`/planillas/${id}/estado`, { estado });
+    return response.data;
+  },
+
+  // Todo lo de la pantalla de planilla en un pedido
+  async getGrilla(id: number): Promise<Grilla> {
+    const response = await api.get(`/planillas/${id}/grilla`);
     return response.data;
   },
 

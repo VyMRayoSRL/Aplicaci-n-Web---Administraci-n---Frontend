@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { Plus, Eye, Table2, Trash2 } from 'lucide-react'
+import { Plus, Table2, Trash2 } from 'lucide-react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { usePlanillasByPuesto, useCreatePlanilla, useDeletePlanilla } from '../hooks/usePlanillas'
 import { EstadoPlanillaBadge } from '../components/PlanillaEstado'
@@ -88,21 +88,10 @@ const PlanillasScreen: React.FC = () => {
                     <td className="table-cell">
                       <div className="flex justify-end gap-2">
                         <button
-                          onClick={() => navigate(`/planillas/${pl.id_planilla}`, { state: { servicioNombre: servicioNombreFromNav, puestoNombre: puestoNombreFromNav } })}
-                          className="btn-secondary inline-flex items-center"
+                          onClick={() => navigate(`/planillas/${pl.id_planilla}`)}
+                          className="btn-primary inline-flex items-center px-3 py-1.5 text-sm"
                         >
-                          <Eye className="h-4 w-4 mr-2" /> Abrir
-                        </button>
-                        <button
-                          onClick={() => {
-                            const sn = encodeURIComponent(servicioNombreFromNav || '');
-                            const pn = encodeURIComponent(puestoNombreFromNav || '');
-                            navigate(`/planillas/${pl.id_planilla}/excel?sn=${sn}&pn=${pn}`, { state: { servicioNombre: servicioNombreFromNav, puestoNombre: puestoNombreFromNav } })
-                          }}
-                          className="btn-secondary inline-flex items-center"
-                          title="Ver grilla (vista Excel)"
-                        >
-                          <Table2 className="h-4 w-4 mr-2" /> Grilla
+                          <Table2 className="h-4 w-4 mr-1.5" /> Abrir
                         </button>
                         {perms.canDeletePlanillas && pl.estado === 'borrador' && (
                           <button

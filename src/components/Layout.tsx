@@ -29,7 +29,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Vigiladores', href: '/vigiladores', icon: Users, roles: ['admin','contabilidad','supervisor'] },
     { name: 'Contabilidad', href: '/contabilidad', icon: Calculator, roles: ['admin','contabilidad'] },
     { name: 'Importar Asistencias', href: '/importar-asistencias', icon: FileText, roles: ['admin','contabilidad'] },
-    { name: 'Gestión Planilla Vigilador', href: '/gestion-planilla-vigilador', icon: Calendar, roles: ['admin','contabilidad','supervisor'] },
+    { name: 'Agenda de vigiladores', href: '/agenda', icon: Calendar, roles: ['admin','contabilidad','supervisor'] },
   ]
 
   const isActive = (href: string) => {

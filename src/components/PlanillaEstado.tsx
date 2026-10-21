@@ -36,7 +36,8 @@ export const EstadoPlanillaBadge: React.FC<{ estado?: PlanillaEstado }> = ({ est
 }
 
 // Insignia del estado más la acción que corresponde según estado y rol
-export const EstadoPlanillaControl: React.FC<{ planilla?: Planilla }> = ({ planilla }) => {
+// permisos (de la grilla): si vienen, mandan sobre el rol (el supervisor solo confirma sus planillas)
+export const EstadoPlanillaControl: React.FC<{ planilla?: Planilla; permisos?: { cambiarEstado: boolean; cerrar: boolean } }> = ({ planilla, permisos }) => {
   const perms = usePermissions()
   const cambiar = useCambiarEstadoPlanilla(planilla?.id_planilla || 0)
   if (!planilla) return null
@@ -46,21 +47,23 @@ export const EstadoPlanillaControl: React.FC<{ planilla?: Planilla }> = ({ plani
   }
 
   let accion: React.ReactNode = null
-  if (planilla.estado === 'borrador' && perms.canManagePlanillas) {
+  const puedeConfirmar = permisos ? permisos.cambiarEstado : perms.canManagePlanillas
+  const puedeCerrar = permisos ? permisos.cerrar : perms.canClosePlanillas
+  if (planilla.estado === 'borrador' && puedeConfirmar) {
     accion = (
       <button className="btn-primary text-sm inline-flex items-center" disabled={cambiar.isPending}
         onClick={() => confirmarYCambiar('vigente', 'Al confirmarla, la planilla queda vigente y ya no se puede eliminar. ¿Continuar?')}>
         <CheckCircle2 className="h-4 w-4 mr-1.5" /> Confirmar planilla
       </button>
     )
-  } else if (planilla.estado === 'vigente' && perms.canClosePlanillas) {
+  } else if (planilla.estado === 'vigente' && puedeCerrar) {
     accion = (
       <button className="btn-secondary text-sm inline-flex items-center" disabled={cambiar.isPending}
         onClick={() => confirmarYCambiar('cerrada', 'Al cerrarla no se podrán modificar turnos ni vigiladores hasta reabrirla. ¿Cerrar la planilla?')}>
         <Lock className="h-4 w-4 mr-1.5" /> Cerrar mes
       </button>
     )
-  } else if (planilla.estado === 'cerrada' && perms.canClosePlanillas) {
+  } else if (planilla.estado === 'cerrada' && puedeCerrar) {
     accion = (
       <button className="btn-secondary text-sm inline-flex items-center" disabled={cambiar.isPending}
         onClick={() => confirmarYCambiar('vigente', 'La reapertura queda registrada. ¿Reabrir la planilla?')}>

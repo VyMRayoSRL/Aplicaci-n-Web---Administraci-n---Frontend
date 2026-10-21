@@ -40,7 +40,8 @@ const ContabilidadResumenMensualScreen: React.FC = () => {
     horas_nocturnas: acc.horas_nocturnas + (r.horas_nocturnas || 0),
     horas_totales: acc.horas_totales + (r.horas_totales || 0),
     dias_trabajados: acc.dias_trabajados + (r.dias_trabajados || 0),
-  }), { horas_diurnas: 0, horas_nocturnas: 0, horas_totales: 0, dias_trabajados: 0 }), [data])
+    horas_justificadas: acc.horas_justificadas + (r.horas_justificadas || 0),
+  }), { horas_diurnas: 0, horas_nocturnas: 0, horas_totales: 0, dias_trabajados: 0, horas_justificadas: 0 }), [data])
 
   const exportar = async () => {
     const rows = data.map((r) => ({
@@ -107,6 +108,7 @@ const ContabilidadResumenMensualScreen: React.FC = () => {
                 <th className="text-right px-3 py-2">Horas nocturnas</th>
                 <th className="text-right px-3 py-2">Horas totales</th>
                 <th className="text-right px-3 py-2">Días trabajados</th>
+                <th className="text-right px-3 py-2" title="Horas de turnos con ausencia justificada (enfermedad con certificado, licencia, vacaciones): se pagan como día normal">Horas justificadas</th>
               </tr>
             </thead>
             <tbody>
@@ -119,6 +121,7 @@ const ContabilidadResumenMensualScreen: React.FC = () => {
                   <td className="px-3 py-2 text-right">{r.horas_nocturnas.toFixed(2)}</td>
                   <td className="px-3 py-2 text-right">{r.horas_totales.toFixed(2)}</td>
                   <td className="px-3 py-2 text-right">{r.dias_trabajados}</td>
+                  <td className="px-3 py-2 text-right">{(r.horas_justificadas || 0).toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -129,6 +132,7 @@ const ContabilidadResumenMensualScreen: React.FC = () => {
                 <td className="px-3 py-2 text-right">{totales.horas_nocturnas.toFixed(2)}</td>
                 <td className="px-3 py-2 text-right">{totales.horas_totales.toFixed(2)}</td>
                 <td className="px-3 py-2 text-right">{totales.dias_trabajados}</td>
+                <td className="px-3 py-2 text-right">{totales.horas_justificadas.toFixed(2)}</td>
               </tr>
             </tfoot>
           </table>
